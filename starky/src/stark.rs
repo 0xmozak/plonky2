@@ -1,8 +1,5 @@
-//! Implementation of the [`Stark`] trait that defines the set of constraints
-//! related to a statement.
-
-#[cfg(not(feature = "std"))]
-use alloc::{vec, vec::Vec};
+use alloc::vec;
+use alloc::vec::Vec;
 
 use plonky2::field::extension::{Extendable, FieldExtension};
 use plonky2::field::packed::PackedField;
@@ -14,29 +11,30 @@ use plonky2::fri::structure::{
 use plonky2::hash::hash_types::RichField;
 use plonky2::iop::ext_target::ExtensionTarget;
 use plonky2::plonk::circuit_builder::CircuitBuilder;
+use plonky2::util::ceil_div_usize;
 
 use crate::config::StarkConfig;
 use crate::constraint_consumer::{ConstraintConsumer, RecursiveConstraintConsumer};
-use crate::evaluation_frame::StarkEvaluationFrame;
-use crate::lookup::Lookup;
+use crate::permutation::PermutationPair;
+use crate::vars::{StarkEvaluationTargets, StarkEvaluationVars};
+
+const TRACE_ORACLE_INDEX: usize = 0;
+const PERMUTATION_CTL_ORACLE_INDEX: usize = 1;
+const QUOTIENT_ORACLE_INDEX: usize = 2;
+
+pub struct LookupConfig {
+    degree_bits: usize,
+    num_zs: usize,
+}
 
 /// Represents a STARK system.
 pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
     /// The total number of columns in the trace.
-    const COLUMNS: usize = Self::EvaluationFrameTarget::COLUMNS;
-    /// The total number of public inputs.
-    const PUBLIC_INPUTS: usize = Self::EvaluationFrameTarget::PUBLIC_INPUTS;
+    const COLUMNS: usize;
+    /// The number of public inputs.
+    const PUBLIC_INPUTS: usize;
 
-    /// This is used to evaluate constraints natively.
-    type EvaluationFrame<FE, P, const D2: usize>: StarkEvaluationFrame<P, FE>
-    where
-        FE: FieldExtension<D2, BaseField = F>,
-        P: PackedField<Scalar = FE>;
-
-    /// The `Target` version of `Self::EvaluationFrame`, used to evaluate constraints recursively.
-    type EvaluationFrameTarget: StarkEvaluationFrame<ExtensionTarget<D>, ExtensionTarget<D>>;
-
-    /// Evaluates constraints at a vector of points.
+    /// Evaluate constraints at a vector of points.
     ///
     /// The points are elements of a field `FE`, a degree `D2` extension of `F`. This lets us
     /// evaluate constraints over a larger domain if desired. This can also be called with `FE = F`
@@ -44,54 +42,54 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
     /// constraints over `F`.
     fn eval_packed_generic<FE, P, const D2: usize>(
         &self,
-        vars: &Self::EvaluationFrame<FE, P, D2>,
+        vars: StarkEvaluationVars<FE, P, { Self::COLUMNS }, { Self::PUBLIC_INPUTS }>,
         yield_constr: &mut ConstraintConsumer<P>,
     ) where
         FE: FieldExtension<D2, BaseField = F>,
         P: PackedField<Scalar = FE>;
 
-    /// Evaluates constraints at a vector of points from the base field `F`.
+    /// Evaluate constraints at a vector of points from the base field `F`.
     fn eval_packed_base<P: PackedField<Scalar = F>>(
         &self,
-        vars: &Self::EvaluationFrame<F, P, 1>,
+        vars: StarkEvaluationVars<F, P, { Self::COLUMNS }, { Self::PUBLIC_INPUTS }>,
         yield_constr: &mut ConstraintConsumer<P>,
     ) {
         self.eval_packed_generic(vars, yield_constr)
     }
 
-    /// Evaluates constraints at a single point from the degree `D` extension field.
+    /// Evaluate constraints at a single point from the degree `D` extension field.
     fn eval_ext(
         &self,
-        vars: &Self::EvaluationFrame<F::Extension, F::Extension, D>,
+        vars: StarkEvaluationVars<
+            F::Extension,
+            F::Extension,
+            { Self::COLUMNS },
+            { Self::PUBLIC_INPUTS },
+        >,
         yield_constr: &mut ConstraintConsumer<F::Extension>,
     ) {
         self.eval_packed_generic(vars, yield_constr)
     }
 
-    /// Evaluates constraints at a vector of points from the degree `D` extension field.
-    /// This is like `eval_ext`, except in the context of a recursive circuit.
-    /// Note: constraints must be added through`yield_constr.constraint(builder, constraint)`
-    /// in the same order as they are given in `eval_packed_generic`.
+    /// Evaluate constraints at a vector of points from the degree `D` extension field. This is like
+    /// `eval_ext`, except in the context of a recursive circuit.
+    /// Note: constraints must be added through`yeld_constr.constraint(builder, constraint)` in the
+    /// same order as they are given in `eval_packed_generic`.
     fn eval_ext_circuit(
         &self,
         builder: &mut CircuitBuilder<F, D>,
-        vars: &Self::EvaluationFrameTarget,
+        vars: StarkEvaluationTargets<D, { Self::COLUMNS }, { Self::PUBLIC_INPUTS }>,
         yield_constr: &mut RecursiveConstraintConsumer<F, D>,
     );
 
-    /// Outputs the maximum constraint degree of this [`Stark`].
+    /// The maximum constraint degree.
     fn constraint_degree(&self) -> usize;
 
-    /// Outputs the maximum quotient polynomial's degree factor of this [`Stark`].
+    /// The maximum constraint degree.
     fn quotient_degree_factor(&self) -> usize {
-        match self.constraint_degree().checked_sub(1) {
-            Some(v) => 1.max(v),
-            None => 0,
-        }
+        1.max(self.constraint_degree() - 1)
     }
 
-    /// Outputs the number of quotient polynomials this [`Stark`] would require with
-    /// the provided [`StarkConfig`]
     fn num_quotient_polys(&self, config: &StarkConfig) -> usize {
         self.quotient_degree_factor() * config.num_challenges
     }
@@ -101,73 +99,70 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
         &self,
         zeta: F::Extension,
         g: F,
-        num_ctl_helpers: usize,
-        num_ctl_zs: Vec<usize>,
         config: &StarkConfig,
+        lookup_cfg: Option<&LookupConfig>,
     ) -> FriInstanceInfo<F, D> {
-        let mut oracles = vec![];
-        let trace_info = FriPolynomialInfo::from_range(oracles.len(), 0..Self::COLUMNS);
-        oracles.push(FriOracleInfo {
+        let trace_info = FriPolynomialInfo::from_range(TRACE_ORACLE_INDEX, 0..Self::COLUMNS);
+        let trace_oracle = FriOracleInfo {
             num_polys: Self::COLUMNS,
             blinding: false,
-        });
-
-        let num_lookup_columns = self.num_lookup_helper_columns(config);
-        let num_auxiliary_polys = num_lookup_columns + num_ctl_helpers + num_ctl_zs.len();
-        let auxiliary_polys_info = if self.uses_lookups() || self.requires_ctls() {
-            let aux_polys = FriPolynomialInfo::from_range(oracles.len(), 0..num_auxiliary_polys);
-            oracles.push(FriOracleInfo {
-                num_polys: num_auxiliary_polys,
-                blinding: false,
-            });
-            aux_polys
-        } else {
-            vec![]
         };
 
-        let num_quotient_polys = self.num_quotient_polys(config);
-        let quotient_info = if num_quotient_polys > 0 {
-            let quotient_polys =
-                FriPolynomialInfo::from_range(oracles.len(), 0..num_quotient_polys);
-            oracles.push(FriOracleInfo {
-                num_polys: num_quotient_polys,
-                blinding: false,
-            });
-            quotient_polys
-        } else {
-            vec![]
+        let num_ctl_zs = lookup_cfg.map(|n| n.num_zs).unwrap_or_default();
+        let num_permutation_batches = self.num_permutation_batches(config);
+        let num_z_polys = num_permutation_batches + num_ctl_zs;
+
+        let permutation_zs_info = self
+            .uses_permutation_args()
+            .then(|| FriPolynomialInfo::from_range(PERMUTATION_CTL_ORACLE_INDEX, 0..num_z_polys))
+            .unwrap_or_default();
+
+        let permutation_oracle = FriOracleInfo {
+            num_polys: num_z_polys,
+            blinding: false,
+        };
+
+        let num_quotient_polys = self.quotient_degree_factor() * config.num_challenges;
+        let quotient_info =
+            FriPolynomialInfo::from_range(QUOTIENT_ORACLE_INDEX, 0..num_quotient_polys);
+        let quotient_oracle = FriOracleInfo {
+            num_polys: num_quotient_polys,
+            blinding: false,
         };
 
         let zeta_batch = FriBatchInfo {
             point: zeta,
             polynomials: [
                 trace_info.clone(),
-                auxiliary_polys_info.clone(),
+                permutation_zs_info.clone(),
                 quotient_info,
             ]
             .concat(),
         };
         let zeta_next_batch = FriBatchInfo {
             point: zeta.scalar_mul(g),
-            polynomials: [trace_info, auxiliary_polys_info].concat(),
+            polynomials: [trace_info, permutation_zs_info].concat(),
         };
-
         let mut batches = vec![zeta_batch, zeta_next_batch];
 
-        if self.requires_ctls() {
+        if let Some(lookup_cfg) = lookup_cfg {
             let ctl_zs_info = FriPolynomialInfo::from_range(
-                1, // auxiliary oracle index
-                num_lookup_columns + num_ctl_helpers..num_auxiliary_polys,
+                PERMUTATION_CTL_ORACLE_INDEX,
+                num_permutation_batches..num_permutation_batches + num_ctl_zs,
             );
-            let ctl_first_batch = FriBatchInfo {
-                point: F::Extension::ONE,
+
+            let ctl_last_batch = FriBatchInfo {
+                point: F::Extension::primitive_root_of_unity(lookup_cfg.degree_bits).inverse(),
                 polynomials: ctl_zs_info,
             };
 
-            batches.push(ctl_first_batch);
+            batches.push(ctl_last_batch);
         }
 
-        FriInstanceInfo { oracles, batches }
+        FriInstanceInfo {
+            oracles: vec![trace_oracle, permutation_oracle, quotient_oracle],
+            batches,
+        }
     }
 
     /// Computes the FRI instance used to prove this Stark.
@@ -176,48 +171,40 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
         builder: &mut CircuitBuilder<F, D>,
         zeta: ExtensionTarget<D>,
         g: F,
-        num_ctl_helper_polys: usize,
-        num_ctl_zs: usize,
         config: &StarkConfig,
     ) -> FriInstanceInfoTarget<D> {
         let mut oracles = vec![];
+
         let trace_info = FriPolynomialInfo::from_range(oracles.len(), 0..Self::COLUMNS);
         oracles.push(FriOracleInfo {
             num_polys: Self::COLUMNS,
             blinding: false,
         });
 
-        let num_lookup_columns = self.num_lookup_helper_columns(config);
-        let num_auxiliary_polys = num_lookup_columns + num_ctl_helper_polys + num_ctl_zs;
-        let auxiliary_polys_info = if self.uses_lookups() || self.requires_ctls() {
-            let aux_polys = FriPolynomialInfo::from_range(oracles.len(), 0..num_auxiliary_polys);
+        let permutation_zs_info = if self.uses_permutation_args() {
+            let num_z_polys = self.num_permutation_batches(config);
+            let polys = FriPolynomialInfo::from_range(oracles.len(), 0..num_z_polys);
             oracles.push(FriOracleInfo {
-                num_polys: num_auxiliary_polys,
+                num_polys: num_z_polys,
                 blinding: false,
             });
-            aux_polys
+            polys
         } else {
             vec![]
         };
 
-        let num_quotient_polys = self.num_quotient_polys(config);
-        let quotient_info = if num_quotient_polys > 0 {
-            let quotient_polys =
-                FriPolynomialInfo::from_range(oracles.len(), 0..num_quotient_polys);
-            oracles.push(FriOracleInfo {
-                num_polys: num_quotient_polys,
-                blinding: false,
-            });
-            quotient_polys
-        } else {
-            vec![]
-        };
+        let num_quotient_polys = self.quotient_degree_factor() * config.num_challenges;
+        let quotient_info = FriPolynomialInfo::from_range(oracles.len(), 0..num_quotient_polys);
+        oracles.push(FriOracleInfo {
+            num_polys: num_quotient_polys,
+            blinding: false,
+        });
 
         let zeta_batch = FriBatchInfoTarget {
             point: zeta,
             polynomials: [
                 trace_info.clone(),
-                auxiliary_polys_info.clone(),
+                permutation_zs_info.clone(),
                 quotient_info,
             ]
             .concat(),
@@ -225,53 +212,40 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
         let zeta_next = builder.mul_const_extension(g, zeta);
         let zeta_next_batch = FriBatchInfoTarget {
             point: zeta_next,
-            polynomials: [trace_info, auxiliary_polys_info].concat(),
+            polynomials: [trace_info, permutation_zs_info].concat(),
         };
-
-        let mut batches = vec![zeta_batch, zeta_next_batch];
-
-        if self.requires_ctls() {
-            let ctl_zs_info = FriPolynomialInfo::from_range(
-                1, // auxiliary oracle index
-                num_lookup_columns + num_ctl_helper_polys..num_auxiliary_polys,
-            );
-            let ctl_first_batch = FriBatchInfoTarget {
-                point: builder.one_extension(),
-                polynomials: ctl_zs_info,
-            };
-
-            batches.push(ctl_first_batch);
-        }
+        let batches = vec![zeta_batch, zeta_next_batch];
 
         FriInstanceInfoTarget { oracles, batches }
     }
 
-    /// Outputs all the [`Lookup`] this STARK table needs to perform across its columns.
-    fn lookups(&self) -> Vec<Lookup<F>> {
+    /// Pairs of lists of columns that should be permutations of one another. A permutation argument
+    /// will be used for each such pair. Empty by default.
+    fn permutation_pairs(&self) -> Vec<PermutationPair> {
         vec![]
     }
 
-    /// Outputs the number of total lookup helper columns, based on this STARK's vector
-    /// of [`Lookup`] and the number of challenges used by this [`StarkConfig`].
-    fn num_lookup_helper_columns(&self, config: &StarkConfig) -> usize {
-        self.lookups()
-            .iter()
-            .map(|lookup| lookup.num_helper_columns(self.constraint_degree()))
-            .sum::<usize>()
-            * config.num_challenges
+    fn uses_permutation_args(&self) -> bool {
+        !self.permutation_pairs().is_empty()
     }
 
-    /// Indicates whether this STARK uses lookups over some of its columns, and as such requires
-    /// additional steps during proof generation to handle auxiliary polynomials.
-    fn uses_lookups(&self) -> bool {
-        !self.lookups().is_empty()
+    /// The number of permutation argument instances that can be combined into a single constraint.
+    fn permutation_batch_size(&self) -> usize {
+        // The permutation argument constraints look like
+        //     Z(x) \prod(...) = Z(g x) \prod(...)
+        // where each product has a number of terms equal to the batch size. So our batch size
+        // should be one less than our constraint degree, which happens to be our quotient degree.
+        self.quotient_degree_factor()
     }
 
-    /// Indicates whether this STARK belongs to a multi-STARK system, and as such may require
-    /// cross-table lookups to connect shared values across different traces.
-    ///
-    /// It defaults to `false`, i.e. for simple uni-STARK systems.
-    fn requires_ctls(&self) -> bool {
-        false
+    fn num_permutation_instances(&self, config: &StarkConfig) -> usize {
+        self.permutation_pairs().len() * config.num_challenges
+    }
+
+    fn num_permutation_batches(&self, config: &StarkConfig) -> usize {
+        ceil_div_usize(
+            self.num_permutation_instances(config),
+            self.permutation_batch_size(),
+        )
     }
 }
