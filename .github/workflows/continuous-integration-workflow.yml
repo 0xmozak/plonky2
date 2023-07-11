@@ -20,30 +20,25 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v2
 
-      - name: Install nightly toolchain
-        id: rustc-toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: nightly
-          override: true
+      - name: Get rust version
+        run: echo "RUST_VERSION=$(cat rust-toolchain.toml | grep '^channel\s*=' | cut -d '=' -f2 | sed 's/"//g' | sed -e 's/^[ \t]*//')" >> $GITHUB_ENV
+        shell: bash
 
-      - name: rust-cache
-        uses: actions/cache@v3
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@master
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: rustc-test-${{ steps.rustc-toolchain.outputs.rustc_hash }}-cargo-${{ hashFiles('**/Cargo.toml') }}
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - uses: Swatinem/rust-cache@v2
+        if: ${{ inputs.cache-key != '' }}
+        with:
+          prefix-key: ${{ inputs.cache-key }}
+      
+      - uses: Swatinem/rust-cache@v2
+        if: ${{ inputs.cache-key == '' }}
 
       - name: Run cargo test
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --all
+        run: cargo test --all
         env:
           RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0
           RUST_LOG: 1
@@ -58,38 +53,27 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v2
 
-      - name: Install nightly toolchain
-        id: rustc-toolchain
-        uses: actions-rs/toolchain@v1
+      - name: Get rust version
+        run: echo "RUST_VERSION=$(cat rust-toolchain.toml | grep '^channel\s*=' | cut -d '=' -f2 | sed 's/"//g' | sed -e 's/^[ \t]*//')" >> $GITHUB_ENV
+        shell: bash
+
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@master
         with:
-          profile: minimal
-          toolchain: nightly
-          override: true
+          toolchain: ${{ env.RUST_VERSION }}
           components: rustfmt, clippy
 
-      - name: rust-cache
-        uses: actions/cache@v3
+      - uses: Swatinem/rust-cache@v2
+        if: ${{ inputs.cache-key != '' }}
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: rustc-lints-${{ steps.rustc-toolchain.outputs.rustc_hash }}-cargo-${{ hashFiles('**/Cargo.toml') }}
-
+          prefix-key: ${{ inputs.cache-key }}
+      
       - name: Run cargo fmt
-        uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
+        run: cargo fmt --all -- --check
         env:
           CARGO_INCREMENTAL: 1
 
       - name: Run cargo clippy
-        uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: --all-features --all-targets -- -D warnings -A incomplete-features
+        run: cargo clippy --all-features --all-targets -- -D warnings -A incomplete-features
         env:
           CARGO_INCREMENTAL: 1
