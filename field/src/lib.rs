@@ -1,13 +1,15 @@
 #![allow(incomplete_features)]
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::type_complexity)]
 #![allow(clippy::len_without_is_empty)]
 #![allow(clippy::needless_range_loop)]
-#![deny(rustdoc::broken_intra_doc_links)]
-#![deny(missing_debug_implementations)]
+#![feature(stdsimd)]
 #![feature(specialization)]
-#![cfg_attr(target_arch = "x86_64", feature(stdarch_x86_avx512))]
 #![cfg_attr(not(test), no_std)]
 
 extern crate alloc;
+
+mod inversion;
 
 pub(crate) mod arch;
 
