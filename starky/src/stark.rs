@@ -97,6 +97,7 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
         g: F,
         config: &StarkConfig,
         lookup_cfg: Option<&LookupConfig>,
+        num_lookup_columns: usize,
     ) -> FriInstanceInfo<F, D> {
         let mut oracles = vec![];
         let trace_info = FriPolynomialInfo::from_range(oracles.len(), 0..Self::COLUMNS);
@@ -107,23 +108,21 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
         oracles.push(trace_oracle);
 
         let num_ctl_zs = lookup_cfg.map(|n| n.num_zs).unwrap_or_default();
-        let num_permutation_batches = self.num_permutation_batches(config);
-        let num_z_polys = num_permutation_batches + num_ctl_zs;
+        let num_auxiliary_polys = num_lookup_columns + num_ctl_zs;
 
-        let permutation_zs_info = FriPolynomialInfo::from_range(oracles.len(), 0..num_z_polys);
+        let auxiliary_polys_info =
+            FriPolynomialInfo::from_range(oracles.len(), 0..num_auxiliary_polys);
 
-        let ctl_zs_info = FriPolynomialInfo::from_range(
-            oracles.len(),
-            num_permutation_batches..num_permutation_batches + num_ctl_zs,
-        );
+        let ctl_zs_info =
+            FriPolynomialInfo::from_range(oracles.len(), num_lookup_columns..num_auxiliary_polys);
 
-        let permutation_oracle = FriOracleInfo {
-            num_polys: num_z_polys,
+        let auxiliary_oracle = FriOracleInfo {
+            num_polys: num_auxiliary_polys,
             blinding: false,
         };
 
-        if self.uses_permutation_args() || lookup_cfg.is_some() {
-            oracles.push(permutation_oracle);
+        if num_lookup_columns > 0 || lookup_cfg.is_some() {
+            oracles.push(auxiliary_oracle);
         }
 
         let num_quotient_polys = self.quotient_degree_factor() * config.num_challenges;
@@ -138,14 +137,14 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
             point: zeta,
             polynomials: [
                 trace_info.clone(),
-                permutation_zs_info.clone(),
+                auxiliary_polys_info.clone(),
                 quotient_info,
             ]
             .concat(),
         };
         let zeta_next_batch = FriBatchInfo {
             point: zeta.scalar_mul(g),
-            polynomials: [trace_info, permutation_zs_info].concat(),
+            polynomials: [trace_info, auxiliary_polys_info].concat(),
         };
         let mut batches = vec![zeta_batch, zeta_next_batch];
 

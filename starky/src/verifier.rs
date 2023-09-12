@@ -134,6 +134,7 @@ where
             F::primitive_root_of_unity(degree_bits),
             config,
             None,
+            0,
         ),
         &proof.openings.to_fri_openings(),
         &challenges.fri_challenges,

@@ -172,7 +172,7 @@ where
         timing,
         "compute openings proof",
         PolynomialBatch::prove_openings(
-            &stark.fri_instance(zeta, g, config, None),
+            &stark.fri_instance(zeta, g, config, None, 0),
             &initial_merkle_trees,
             &mut challenger,
             &fri_params,
