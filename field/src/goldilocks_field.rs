@@ -3,7 +3,7 @@ use core::hash::{Hash, Hasher};
 use core::iter::{Product, Sum};
 use core::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
-use num::{BigUint, Integer, ToPrimitive};
+use num::{BigUint, Integer};
 use plonky2_util::{assume, branch_hint};
 use serde::{Deserialize, Serialize};
 
@@ -77,14 +77,14 @@ impl Field for GoldilocksField {
     const CHARACTERISTIC_TWO_ADICITY: usize = Self::TWO_ADICITY;
 
     // Sage: `g = GF(p).multiplicative_generator()`
-    const MULTIPLICATIVE_GROUP_GENERATOR: Self = Self(14293326489335486720);
+    const MULTIPLICATIVE_GROUP_GENERATOR: Self = Self(7);
 
     // Sage:
     // ```
     // g_2 = g^((p - 1) / 2^32)
     // g_2.multiplicative_order().factor()
     // ```
-    const POWER_OF_TWO_GENERATOR: Self = Self(7277203076849721926);
+    const POWER_OF_TWO_GENERATOR: Self = Self(1753635133440165772);
 
     const BITS: usize = 64;
 
@@ -104,7 +104,7 @@ impl Field for GoldilocksField {
     /// Therefore      $a^(p-2)     = a^-1 (mod p)$
     ///
     /// The following code has been adapted from winterfell/math/src/field/f64/mod.rs
-    /// located at <https://github.com/facebook/winterfell>.
+    /// located at https://github.com/facebook/winterfell.
     fn try_inverse(&self) -> Option<Self> {
         if self.is_zero() {
             return None;
@@ -147,7 +147,7 @@ impl Field for GoldilocksField {
     }
 
     fn from_noncanonical_biguint(n: BigUint) -> Self {
-        Self(n.mod_floor(&Self::order()).to_u64().unwrap())
+        Self(n.mod_floor(&Self::order()).to_u64_digits()[0])
     }
 
     #[inline(always)]
@@ -381,7 +381,7 @@ unsafe fn add_no_canonicalize_trashing_input(x: u64, y: u64) -> u64 {
 
 #[inline(always)]
 #[cfg(not(target_arch = "x86_64"))]
-const unsafe fn add_no_canonicalize_trashing_input(x: u64, y: u64) -> u64 {
+unsafe fn add_no_canonicalize_trashing_input(x: u64, y: u64) -> u64 {
     let (res_wrapped, carry) = x.overflowing_add(y);
     // Below cannot overflow unless the assumption if x + y < 2**64 + ORDER is incorrect.
     res_wrapped + EPSILON * (carry as u64)
@@ -415,7 +415,7 @@ fn reduce128(x: u128) -> GoldilocksField {
 }
 
 #[inline]
-const fn split(x: u128) -> (u64, u64) {
+fn split(x: u128) -> (u64, u64) {
     (x as u64, (x >> 64) as u64)
 }
 
