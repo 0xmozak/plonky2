@@ -12,10 +12,18 @@ use crate::permutation::{
 use crate::stark::Stark;
 use crate::vars::{StarkEvaluationTargets, StarkEvaluationVars};
 
-pub(crate) fn eval_vanishing_poly<F, FE, P, S, const D: usize, const D2: usize>(
+pub(crate) fn eval_vanishing_poly<
+    F,
+    FE,
+    P,
+    S,
+    const COLUMNS: usize,
+    const D: usize,
+    const D2: usize,
+>(
     stark: &S,
     config: &StarkConfig,
-    vars: StarkEvaluationVars<FE, P, { S::COLUMNS }, { S::PUBLIC_INPUTS }>,
+    vars: StarkEvaluationVars<FE, P, { COLUMNS }, { S::PUBLIC_INPUTS }>,
     permutation_data: Option<PermutationCheckVars<F, FE, P, D2>>,
     consumer: &mut ConstraintConsumer<P>,
 ) where
@@ -23,12 +31,11 @@ pub(crate) fn eval_vanishing_poly<F, FE, P, S, const D: usize, const D2: usize>(
     FE: FieldExtension<D2, BaseField = F>,
     P: PackedField<Scalar = FE>,
     S: Stark<F, D>,
-    [(); S::COLUMNS]:,
     [(); S::PUBLIC_INPUTS]:,
 {
     stark.eval_packed_generic(vars, consumer);
     if let Some(permutation_data) = permutation_data {
-        eval_permutation_checks::<F, FE, P, S, D, D2>(
+        eval_permutation_checks::<F, FE, P, S, COLUMNS, D, D2>(
             stark,
             config,
             vars,
@@ -38,22 +45,21 @@ pub(crate) fn eval_vanishing_poly<F, FE, P, S, const D: usize, const D2: usize>(
     }
 }
 
-pub(crate) fn eval_vanishing_poly_circuit<F, S, const D: usize>(
+pub(crate) fn eval_vanishing_poly_circuit<F, S, const COLUMNS: usize, const D: usize>(
     builder: &mut CircuitBuilder<F, D>,
     stark: &S,
     config: &StarkConfig,
-    vars: StarkEvaluationTargets<D, { S::COLUMNS }, { S::PUBLIC_INPUTS }>,
+    vars: StarkEvaluationTargets<D, { COLUMNS }, { S::PUBLIC_INPUTS }>,
     permutation_data: Option<PermutationCheckDataTarget<D>>,
     consumer: &mut RecursiveConstraintConsumer<F, D>,
 ) where
     F: RichField + Extendable<D>,
     S: Stark<F, D>,
-    [(); S::COLUMNS]:,
     [(); S::PUBLIC_INPUTS]:,
 {
     stark.eval_ext_circuit(builder, vars, consumer);
     if let Some(permutation_data) = permutation_data {
-        eval_permutation_checks_circuit::<F, S, D>(
+        eval_permutation_checks_circuit::<F, S, COLUMNS, D>(
             builder,
             stark,
             config,

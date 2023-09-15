@@ -259,10 +259,18 @@ where
     pub(crate) permutation_challenge_sets: Vec<PermutationChallengeSet<F>>,
 }
 
-pub(crate) fn eval_permutation_checks<F, FE, P, S, const D: usize, const D2: usize>(
+pub(crate) fn eval_permutation_checks<
+    F,
+    FE,
+    P,
+    S,
+    const COLUMNS: usize,
+    const D: usize,
+    const D2: usize,
+>(
     stark: &S,
     config: &StarkConfig,
-    vars: StarkEvaluationVars<FE, P, { S::COLUMNS }, { S::PUBLIC_INPUTS }>,
+    vars: StarkEvaluationVars<FE, P, { COLUMNS }, { S::PUBLIC_INPUTS }>,
     permutation_data: PermutationCheckVars<F, FE, P, D2>,
     consumer: &mut ConstraintConsumer<P>,
 ) where
@@ -270,7 +278,6 @@ pub(crate) fn eval_permutation_checks<F, FE, P, S, const D: usize, const D2: usi
     FE: FieldExtension<D2, BaseField = F>,
     P: PackedField<Scalar = FE>,
     S: Stark<F, D>,
-    [(); S::COLUMNS]:,
     [(); S::PUBLIC_INPUTS]:,
 {
     let PermutationCheckVars {
@@ -326,17 +333,16 @@ pub struct PermutationCheckDataTarget<const D: usize> {
     pub(crate) permutation_challenge_sets: Vec<PermutationChallengeSet<Target>>,
 }
 
-pub(crate) fn eval_permutation_checks_circuit<F, S, const D: usize>(
+pub(crate) fn eval_permutation_checks_circuit<F, S, const COLUMNS: usize, const D: usize>(
     builder: &mut CircuitBuilder<F, D>,
     stark: &S,
     config: &StarkConfig,
-    vars: StarkEvaluationTargets<D, { S::COLUMNS }, { S::PUBLIC_INPUTS }>,
+    vars: StarkEvaluationTargets<D, { COLUMNS }, { S::PUBLIC_INPUTS }>,
     permutation_data: PermutationCheckDataTarget<D>,
     consumer: &mut RecursiveConstraintConsumer<F, D>,
 ) where
     F: RichField + Extendable<D>,
     S: Stark<F, D>,
-    [(); S::COLUMNS]:,
     [(); S::PUBLIC_INPUTS]:,
 {
     let PermutationCheckDataTarget {

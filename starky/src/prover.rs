@@ -29,7 +29,7 @@ use crate::stark::Stark;
 use crate::vanishing_poly::eval_vanishing_poly;
 use crate::vars::StarkEvaluationVars;
 
-pub fn prove<F, C, S, const D: usize>(
+pub fn prove<F, C, S, const COLUMNS: usize, const D: usize>(
     stark: S,
     config: &StarkConfig,
     trace_poly_values: Vec<PolynomialValues<F>>,
@@ -40,7 +40,6 @@ where
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
     S: Stark<F, D>,
-    [(); S::COLUMNS]:,
     [(); S::PUBLIC_INPUTS]:,
 {
     let degree = trace_poly_values[0].len();
@@ -111,7 +110,7 @@ where
     }
 
     let alphas = challenger.get_n_challenges(config.num_challenges);
-    let quotient_polys = compute_quotient_polys::<F, <F as Packable>::Packing, C, S, D>(
+    let quotient_polys = compute_quotient_polys::<F, <F as Packable>::Packing, C, S, COLUMNS, D>(
         &stark,
         &trace_commitment,
         &permutation_zs_commitment_challenges,
@@ -172,7 +171,7 @@ where
         timing,
         "compute openings proof",
         PolynomialBatch::prove_openings(
-            &stark.fri_instance(zeta, g, config, None),
+            &stark.fri_instance::<COLUMNS>(zeta, g, config, None),
             &initial_merkle_trees,
             &mut challenger,
             &fri_params,
@@ -195,7 +194,7 @@ where
 
 /// Computes the quotient polynomials `(sum alpha^i C_i(x)) / Z_H(x)` for `alpha` in `alphas`,
 /// where the `C_i`s are the Stark constraints.
-fn compute_quotient_polys<'a, F, P, C, S, const D: usize>(
+fn compute_quotient_polys<'a, F, P, C, S, const COLUMNS: usize, const D: usize>(
     stark: &S,
     trace_commitment: &'a PolynomialBatch<F, C, D>,
     permutation_zs_commitment_challenges: &'a Option<(
@@ -212,7 +211,6 @@ where
     P: PackedField<Scalar = F>,
     C: GenericConfig<D, F = F>,
     S: Stark<F, D>,
-    [(); S::COLUMNS]:,
     [(); S::PUBLIC_INPUTS]:,
 {
     let degree = 1 << degree_bits;
@@ -236,7 +234,7 @@ where
     let z_h_on_coset = ZeroPolyOnCoset::<F>::new(degree_bits, quotient_degree_bits);
 
     // Retrieve the LDE values at index `i`.
-    let get_trace_values_packed = |i_start| -> [P; S::COLUMNS] {
+    let get_trace_values_packed = |i_start| -> [P; COLUMNS] {
         trace_commitment
             .get_lde_values_packed(i_start, step)
             .try_into()
@@ -284,7 +282,7 @@ where
                     permutation_challenge_sets: permutation_challenge_sets.to_vec(),
                 },
             );
-            eval_vanishing_poly::<F, F, P, S, D, 1>(
+            eval_vanishing_poly::<F, F, P, S, COLUMNS, D, 1>(
                 stark,
                 config,
                 vars,

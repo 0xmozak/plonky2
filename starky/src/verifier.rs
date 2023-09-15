@@ -22,6 +22,7 @@ pub fn verify_stark_proof<
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
     S: Stark<F, D>,
+    const COLUMNS: usize,
     const D: usize,
 >(
     stark: S,
@@ -29,19 +30,25 @@ pub fn verify_stark_proof<
     config: &StarkConfig,
 ) -> Result<()>
 where
-    [(); S::COLUMNS]:,
     [(); S::PUBLIC_INPUTS]:,
 {
     ensure!(proof_with_pis.public_inputs.len() == S::PUBLIC_INPUTS);
     let degree_bits = proof_with_pis.proof.recover_degree_bits(config);
     let challenges = proof_with_pis.get_challenges(&stark, config, degree_bits);
-    verify_stark_proof_with_challenges(stark, proof_with_pis, challenges, degree_bits, config)
+    verify_stark_proof_with_challenges::<F, C, S, COLUMNS, D>(
+        stark,
+        proof_with_pis,
+        challenges,
+        degree_bits,
+        config,
+    )
 }
 
 pub(crate) fn verify_stark_proof_with_challenges<
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
     S: Stark<F, D>,
+    const COLUMNS: usize,
     const D: usize,
 >(
     stark: S,
@@ -51,10 +58,9 @@ pub(crate) fn verify_stark_proof_with_challenges<
     config: &StarkConfig,
 ) -> Result<()>
 where
-    [(); S::COLUMNS]:,
     [(); S::PUBLIC_INPUTS]:,
 {
-    validate_proof_shape(&stark, &proof_with_pis, config)?;
+    validate_proof_shape::<F, C, S, COLUMNS, D>(&stark, &proof_with_pis, config)?;
     check_permutation_options(&stark, &proof_with_pis, &challenges)?;
     let StarkProofWithPublicInputs {
         proof,
@@ -96,7 +102,7 @@ where
         next_zs: permutation_zs_next.as_ref().unwrap().clone(),
         permutation_challenge_sets: challenges.permutation_challenge_sets.unwrap(),
     });
-    eval_vanishing_poly::<F, F::Extension, F::Extension, S, D, D>(
+    eval_vanishing_poly::<F, F::Extension, F::Extension, S, COLUMNS, D, D>(
         &stark,
         config,
         vars,
@@ -129,7 +135,7 @@ where
         .collect_vec();
 
     verify_fri_proof::<F, C, D>(
-        &stark.fri_instance(
+        &stark.fri_instance::<COLUMNS>(
             challenges.stark_zeta,
             F::primitive_root_of_unity(degree_bits),
             config,
@@ -145,7 +151,7 @@ where
     Ok(())
 }
 
-fn validate_proof_shape<F, C, S, const D: usize>(
+fn validate_proof_shape<F, C, S, const COLUMNS: usize, const D: usize>(
     stark: &S,
     proof_with_pis: &StarkProofWithPublicInputs<F, C, D>,
     config: &StarkConfig,
@@ -154,7 +160,6 @@ where
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
     S: Stark<F, D>,
-    [(); S::COLUMNS]:,
 {
     let StarkProofWithPublicInputs {
         proof,
@@ -189,8 +194,8 @@ where
     ensure!(trace_cap.height() == cap_height);
     ensure!(quotient_polys_cap.height() == cap_height);
 
-    ensure!(local_values.len() == S::COLUMNS);
-    ensure!(next_values.len() == S::COLUMNS);
+    ensure!(local_values.len() == COLUMNS);
+    ensure!(next_values.len() == COLUMNS);
     ensure!(quotient_polys.len() == stark.num_quotient_polys(config));
 
     if stark.uses_permutation_args() {

@@ -33,6 +33,8 @@ impl<F: RichField + Extendable<D>, const D: usize> FibonacciStark<F, D> {
     // `num_rows`-th Fibonacci number.
     const PI_INDEX_RES: usize = 2;
 
+    pub const COLUMNS: usize = 4;
+
     fn new(num_rows: usize) -> Self {
         Self {
             num_rows,
@@ -58,12 +60,11 @@ impl<F: RichField + Extendable<D>, const D: usize> FibonacciStark<F, D> {
 }
 
 impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for FibonacciStark<F, D> {
-    const COLUMNS: usize = 4;
     const PUBLIC_INPUTS: usize = 3;
 
-    fn eval_packed_generic<FE, P, const D2: usize>(
+    fn eval_packed_generic<FE, P, const COLUMNS: usize, const D2: usize>(
         &self,
-        vars: StarkEvaluationVars<FE, P, { Self::COLUMNS }, { Self::PUBLIC_INPUTS }>,
+        vars: StarkEvaluationVars<FE, P, { COLUMNS }, { Self::PUBLIC_INPUTS }>,
         yield_constr: &mut ConstraintConsumer<P>,
     ) where
         FE: FieldExtension<D2, BaseField = F>,
@@ -85,10 +86,10 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for FibonacciStar
         );
     }
 
-    fn eval_ext_circuit(
+    fn eval_ext_circuit<const COLUMNS: usize>(
         &self,
         builder: &mut CircuitBuilder<F, D>,
-        vars: StarkEvaluationTargets<D, { Self::COLUMNS }, { Self::PUBLIC_INPUTS }>,
+        vars: StarkEvaluationTargets<D, { COLUMNS }, { Self::PUBLIC_INPUTS }>,
         yield_constr: &mut RecursiveConstraintConsumer<F, D>,
     ) {
         // Check public inputs.
@@ -161,7 +162,7 @@ mod tests {
         let public_inputs = [F::ZERO, F::ONE, fibonacci(num_rows - 1, F::ZERO, F::ONE)];
         let stark = S::new(num_rows);
         let trace = stark.generate_trace(public_inputs[0], public_inputs[1]);
-        let proof = prove::<F, C, S, D>(
+        let proof = prove::<F, C, S, { S::COLUMNS }, D>(
             stark,
             &config,
             trace,
@@ -169,7 +170,7 @@ mod tests {
             &mut TimingTree::default(),
         )?;
 
-        verify_stark_proof(stark, proof, &config)
+        verify_stark_proof::<F, C, S, { S::COLUMNS }, D>(stark, proof, &config)
     }
 
     #[test]
@@ -181,7 +182,7 @@ mod tests {
 
         let num_rows = 1 << 5;
         let stark = S::new(num_rows);
-        test_stark_low_degree(stark)
+        test_stark_low_degree::<F, S, { S::COLUMNS }, D>(stark)
     }
 
     #[test]
@@ -193,7 +194,7 @@ mod tests {
 
         let num_rows = 1 << 5;
         let stark = S::new(num_rows);
-        test_stark_circuit_constraints::<F, C, S, D>(stark)
+        test_stark_circuit_constraints::<F, C, S, { S::COLUMNS }, D>(stark)
     }
 
     #[test]
@@ -209,16 +210,16 @@ mod tests {
         let public_inputs = [F::ZERO, F::ONE, fibonacci(num_rows - 1, F::ZERO, F::ONE)];
         let stark = S::new(num_rows);
         let trace = stark.generate_trace(public_inputs[0], public_inputs[1]);
-        let proof = prove::<F, C, S, D>(
+        let proof = prove::<F, C, S, { S::COLUMNS }, D>(
             stark,
             &config,
             trace,
             public_inputs,
             &mut TimingTree::default(),
         )?;
-        verify_stark_proof(stark, proof.clone(), &config)?;
+        verify_stark_proof::<F, C, S, { S::COLUMNS }, D>(stark, proof.clone(), &config)?;
 
-        recursive_proof::<F, C, S, C, D>(stark, proof, &config, true)
+        recursive_proof::<F, C, S, C, { S::COLUMNS }, D>(stark, proof, &config, true)
     }
 
     fn recursive_proof<
@@ -226,6 +227,7 @@ mod tests {
         C: GenericConfig<D, F = F>,
         S: Stark<F, D> + Copy,
         InnerC: GenericConfig<D, F = F>,
+        const COLUMNS: usize,
         const D: usize,
     >(
         stark: S,
@@ -235,17 +237,26 @@ mod tests {
     ) -> Result<()>
     where
         InnerC::Hasher: AlgebraicHasher<F>,
-        [(); S::COLUMNS]:,
         [(); S::PUBLIC_INPUTS]:,
     {
         let circuit_config = CircuitConfig::standard_recursion_config();
         let mut builder = CircuitBuilder::<F, D>::new(circuit_config);
         let mut pw = PartialWitness::new();
         let degree_bits = inner_proof.proof.recover_degree_bits(inner_config);
-        let pt = add_virtual_stark_proof_with_pis(&mut builder, stark, inner_config, degree_bits);
+        let pt = add_virtual_stark_proof_with_pis::<F, S, { COLUMNS }, D>(
+            &mut builder,
+            stark,
+            inner_config,
+            degree_bits,
+        );
         set_stark_proof_with_pis_target(&mut pw, &pt, &inner_proof);
 
-        verify_stark_proof_circuit::<F, InnerC, S, D>(&mut builder, stark, pt, inner_config);
+        verify_stark_proof_circuit::<F, InnerC, S, COLUMNS, D>(
+            &mut builder,
+            stark,
+            pt,
+            inner_config,
+        );
 
         if print_gate_counts {
             builder.print_gate_counts(0);

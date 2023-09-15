@@ -25,8 +25,6 @@ pub struct LookupConfig {
 
 /// Represents a STARK system.
 pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
-    /// The total number of columns in the trace.
-    const COLUMNS: usize;
     /// The number of public inputs.
     const PUBLIC_INPUTS: usize;
 
@@ -36,32 +34,27 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
     /// evaluate constraints over a larger domain if desired. This can also be called with `FE = F`
     /// and `D2 = 1`, in which case we are using the trivial extension, i.e. just evaluating
     /// constraints over `F`.
-    fn eval_packed_generic<FE, P, const D2: usize>(
+    fn eval_packed_generic<FE, P, const COLUMNS: usize, const D2: usize>(
         &self,
-        vars: StarkEvaluationVars<FE, P, { Self::COLUMNS }, { Self::PUBLIC_INPUTS }>,
+        vars: StarkEvaluationVars<FE, P, { COLUMNS }, { Self::PUBLIC_INPUTS }>,
         yield_constr: &mut ConstraintConsumer<P>,
     ) where
         FE: FieldExtension<D2, BaseField = F>,
         P: PackedField<Scalar = FE>;
 
     /// Evaluate constraints at a vector of points from the base field `F`.
-    fn eval_packed_base<P: PackedField<Scalar = F>>(
+    fn eval_packed_base<P: PackedField<Scalar = F>, const COLUMNS: usize>(
         &self,
-        vars: StarkEvaluationVars<F, P, { Self::COLUMNS }, { Self::PUBLIC_INPUTS }>,
+        vars: StarkEvaluationVars<F, P, { COLUMNS }, { Self::PUBLIC_INPUTS }>,
         yield_constr: &mut ConstraintConsumer<P>,
     ) {
         self.eval_packed_generic(vars, yield_constr)
     }
 
     /// Evaluate constraints at a single point from the degree `D` extension field.
-    fn eval_ext(
+    fn eval_ext<const COLUMNS: usize>(
         &self,
-        vars: StarkEvaluationVars<
-            F::Extension,
-            F::Extension,
-            { Self::COLUMNS },
-            { Self::PUBLIC_INPUTS },
-        >,
+        vars: StarkEvaluationVars<F::Extension, F::Extension, { COLUMNS }, { Self::PUBLIC_INPUTS }>,
         yield_constr: &mut ConstraintConsumer<F::Extension>,
     ) {
         self.eval_packed_generic(vars, yield_constr)
@@ -71,10 +64,10 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
     /// `eval_ext`, except in the context of a recursive circuit.
     /// Note: constraints must be added through`yeld_constr.constraint(builder, constraint)` in the
     /// same order as they are given in `eval_packed_generic`.
-    fn eval_ext_circuit(
+    fn eval_ext_circuit<const COLUMNS: usize>(
         &self,
         builder: &mut CircuitBuilder<F, D>,
-        vars: StarkEvaluationTargets<D, { Self::COLUMNS }, { Self::PUBLIC_INPUTS }>,
+        vars: StarkEvaluationTargets<D, { COLUMNS }, { Self::PUBLIC_INPUTS }>,
         yield_constr: &mut RecursiveConstraintConsumer<F, D>,
     );
 
@@ -91,7 +84,7 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
     }
 
     /// Computes the FRI instance used to prove this Stark.
-    fn fri_instance(
+    fn fri_instance<const COLUMNS: usize>(
         &self,
         zeta: F::Extension,
         g: F,
@@ -99,9 +92,9 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
         lookup_cfg: Option<&LookupConfig>,
     ) -> FriInstanceInfo<F, D> {
         let mut oracles = vec![];
-        let trace_info = FriPolynomialInfo::from_range(oracles.len(), 0..Self::COLUMNS);
+        let trace_info = FriPolynomialInfo::from_range(oracles.len(), 0..COLUMNS);
         let trace_oracle = FriOracleInfo {
-            num_polys: Self::COLUMNS,
+            num_polys: COLUMNS,
             blinding: false,
         };
         oracles.push(trace_oracle);
@@ -162,7 +155,7 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
     }
 
     /// Computes the FRI instance used to prove this Stark.
-    fn fri_instance_target(
+    fn fri_instance_target<const COLUMNS: usize>(
         &self,
         builder: &mut CircuitBuilder<F, D>,
         zeta: ExtensionTarget<D>,
@@ -171,9 +164,9 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
     ) -> FriInstanceInfoTarget<D> {
         let mut oracles = vec![];
 
-        let trace_info = FriPolynomialInfo::from_range(oracles.len(), 0..Self::COLUMNS);
+        let trace_info = FriPolynomialInfo::from_range(oracles.len(), 0..COLUMNS);
         oracles.push(FriOracleInfo {
-            num_polys: Self::COLUMNS,
+            num_polys: COLUMNS,
             blinding: false,
         });
 

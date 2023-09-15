@@ -29,6 +29,7 @@ pub fn verify_stark_proof_circuit<
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
     S: Stark<F, D>,
+    const COLUMNS: usize,
     const D: usize,
 >(
     builder: &mut CircuitBuilder<F, D>,
@@ -37,7 +38,6 @@ pub fn verify_stark_proof_circuit<
     inner_config: &StarkConfig,
 ) where
     C::Hasher: AlgebraicHasher<F>,
-    [(); S::COLUMNS]:,
     [(); S::PUBLIC_INPUTS]:,
 {
     assert_eq!(proof_with_pis.public_inputs.len(), S::PUBLIC_INPUTS);
@@ -48,7 +48,7 @@ pub fn verify_stark_proof_circuit<
         proof_with_pis.get_challenges::<F, C, S>(builder, &stark, inner_config)
     );
 
-    verify_stark_proof_with_challenges_circuit::<F, C, S, D>(
+    verify_stark_proof_with_challenges_circuit::<F, C, S, COLUMNS, D>(
         builder,
         stark,
         proof_with_pis,
@@ -63,6 +63,7 @@ fn verify_stark_proof_with_challenges_circuit<
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
     S: Stark<F, D>,
+    const COLUMNS: usize,
     const D: usize,
 >(
     builder: &mut CircuitBuilder<F, D>,
@@ -73,7 +74,6 @@ fn verify_stark_proof_with_challenges_circuit<
     degree_bits: usize,
 ) where
     C::Hasher: AlgebraicHasher<F>,
-    [(); S::COLUMNS]:,
     [(); S::PUBLIC_INPUTS]:,
 {
     check_permutation_options(&stark, &proof_with_pis, &challenges).unwrap();
@@ -128,7 +128,7 @@ fn verify_stark_proof_with_challenges_circuit<
     with_context!(
         builder,
         "evaluate vanishing polynomial",
-        eval_vanishing_poly_circuit::<F, S, D>(
+        eval_vanishing_poly_circuit::<F, S, COLUMNS, D>(
             builder,
             &stark,
             inner_config,
@@ -155,7 +155,7 @@ fn verify_stark_proof_with_challenges_circuit<
         .chain(once(proof.quotient_polys_cap))
         .collect_vec();
 
-    let fri_instance = stark.fri_instance_target(
+    let fri_instance = stark.fri_instance_target::<COLUMNS>(
         builder,
         challenges.stark_zeta,
         F::primitive_root_of_unity(degree_bits),
@@ -193,6 +193,7 @@ fn eval_l_0_and_l_last_circuit<F: RichField + Extendable<D>, const D: usize>(
 pub fn add_virtual_stark_proof_with_pis<
     F: RichField + Extendable<D>,
     S: Stark<F, D>,
+    const COLUMNS: usize,
     const D: usize,
 >(
     builder: &mut CircuitBuilder<F, D>,
@@ -200,7 +201,7 @@ pub fn add_virtual_stark_proof_with_pis<
     config: &StarkConfig,
     degree_bits: usize,
 ) -> StarkProofWithPublicInputsTarget<D> {
-    let proof = add_virtual_stark_proof::<F, S, D>(builder, stark, config, degree_bits);
+    let proof = add_virtual_stark_proof::<F, S, COLUMNS, D>(builder, stark, config, degree_bits);
     let public_inputs = builder.add_virtual_targets(S::PUBLIC_INPUTS);
     StarkProofWithPublicInputsTarget {
         proof,
@@ -208,7 +209,12 @@ pub fn add_virtual_stark_proof_with_pis<
     }
 }
 
-pub fn add_virtual_stark_proof<F: RichField + Extendable<D>, S: Stark<F, D>, const D: usize>(
+pub fn add_virtual_stark_proof<
+    F: RichField + Extendable<D>,
+    S: Stark<F, D>,
+    const COLUMNS: usize,
+    const D: usize,
+>(
     builder: &mut CircuitBuilder<F, D>,
     stark: S,
     config: &StarkConfig,
@@ -217,7 +223,7 @@ pub fn add_virtual_stark_proof<F: RichField + Extendable<D>, S: Stark<F, D>, con
     let fri_params = config.fri_params(degree_bits);
     let cap_height = fri_params.config.cap_height;
 
-    let num_leaves_per_oracle = once(S::COLUMNS)
+    let num_leaves_per_oracle = once(COLUMNS)
         .chain(
             stark
                 .uses_permutation_args()
@@ -234,20 +240,25 @@ pub fn add_virtual_stark_proof<F: RichField + Extendable<D>, S: Stark<F, D>, con
         trace_cap: builder.add_virtual_cap(cap_height),
         permutation_zs_cap,
         quotient_polys_cap: builder.add_virtual_cap(cap_height),
-        openings: add_stark_opening_set_target::<F, S, D>(builder, stark, config),
+        openings: add_stark_opening_set_target::<F, S, COLUMNS, D>(builder, stark, config),
         opening_proof: builder.add_virtual_fri_proof(&num_leaves_per_oracle, &fri_params),
     }
 }
 
-fn add_stark_opening_set_target<F: RichField + Extendable<D>, S: Stark<F, D>, const D: usize>(
+fn add_stark_opening_set_target<
+    F: RichField + Extendable<D>,
+    S: Stark<F, D>,
+    const COLUMNS: usize,
+    const D: usize,
+>(
     builder: &mut CircuitBuilder<F, D>,
     stark: S,
     config: &StarkConfig,
 ) -> StarkOpeningSetTarget<D> {
     let num_challenges = config.num_challenges;
     StarkOpeningSetTarget {
-        local_values: builder.add_virtual_extension_targets(S::COLUMNS),
-        next_values: builder.add_virtual_extension_targets(S::COLUMNS),
+        local_values: builder.add_virtual_extension_targets(COLUMNS),
+        next_values: builder.add_virtual_extension_targets(COLUMNS),
         permutation_zs: stark
             .uses_permutation_args()
             .then(|| builder.add_virtual_extension_targets(stark.num_permutation_batches(config))),
