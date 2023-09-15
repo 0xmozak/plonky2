@@ -40,8 +40,8 @@ use crate::iop::generator::{
 use crate::iop::target::{BoolTarget, Target};
 use crate::iop::wire::Wire;
 use crate::plonk::circuit_data::{
-    CircuitConfig, CircuitData, CommonCircuitData, ProverCircuitData, ProverOnlyCircuitData,
-    VerifierCircuitData, VerifierCircuitTarget, VerifierOnlyCircuitData,
+    CircuitConfig, CircuitData, CommonCircuitData, MockCircuitData, ProverCircuitData,
+    ProverOnlyCircuitData, VerifierCircuitData, VerifierCircuitTarget, VerifierOnlyCircuitData,
 };
 use crate::plonk::config::{AlgebraicHasher, GenericConfig, GenericHashOut, Hasher};
 use crate::plonk::copy_constraint::CopyConstraint;
@@ -109,7 +109,7 @@ pub struct CircuitBuilder<F: RichField + Extendable<D>, const D: usize> {
     context_log: ContextTree,
 
     /// Generators used to generate the witness.
-    generators: Vec<WitnessGeneratorRef<F>>,
+    generators: Vec<WitnessGeneratorRef<F, D>>,
 
     constants_to_targets: HashMap<F, Target>,
     targets_to_constants: HashMap<Target, F>,
@@ -244,7 +244,7 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         self.lut_to_lookups[lut_index].push((looking_in, looking_out));
     }
 
-    pub fn num_luts(&mut self) -> usize {
+    pub fn num_luts(&self) -> usize {
         self.lut_to_lookups.len()
     }
 
@@ -321,6 +321,12 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         let t = self.add_virtual_target();
         self.register_public_input(t);
         t
+    }
+
+    pub fn add_virtual_public_input_arr<const N: usize>(&mut self) -> [Target; N] {
+        let ts = [0; N].map(|_| self.add_virtual_target());
+        self.register_public_inputs(&ts);
+        ts
     }
 
     pub fn add_virtual_verifier_data(&mut self, cap_height: usize) -> VerifierCircuitTarget {
@@ -444,11 +450,11 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         self.connect(x, one);
     }
 
-    pub fn add_generators(&mut self, generators: Vec<WitnessGeneratorRef<F>>) {
+    pub fn add_generators(&mut self, generators: Vec<WitnessGeneratorRef<F, D>>) {
         self.generators.extend(generators);
     }
 
-    pub fn add_simple_generator<G: SimpleGenerator<F>>(&mut self, generator: G) {
+    pub fn add_simple_generator<G: SimpleGenerator<F, D>>(&mut self, generator: G) {
         self.generators
             .push(WitnessGeneratorRef::new(generator.adapter()));
     }
@@ -910,7 +916,10 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
     }
 
     /// Builds a "full circuit", with both prover and verifier data.
-    pub fn build<C: GenericConfig<D, F = F>>(mut self) -> CircuitData<F, C, D> {
+    pub fn build_with_options<C: GenericConfig<D, F = F>>(
+        mut self,
+        commit_to_sigma: bool,
+    ) -> CircuitData<F, C, D> {
         let mut timing = TimingTree::new("preprocess", Level::Trace);
 
         #[cfg(feature = "std")]
@@ -1017,15 +1026,19 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         let max_fft_points = 1 << (degree_bits + max(rate_bits, log2_ceil(quotient_degree_factor)));
         let fft_root_table = fft_root_table(max_fft_points);
 
-        let constants_sigmas_vecs = [constant_vecs, sigma_vecs.clone()].concat();
-        let constants_sigmas_commitment = PolynomialBatch::<F, C, D>::from_values(
-            constants_sigmas_vecs,
-            rate_bits,
-            PlonkOracle::CONSTANTS_SIGMAS.blinding,
-            cap_height,
-            &mut timing,
-            Some(&fft_root_table),
-        );
+        let constants_sigmas_commitment = if commit_to_sigma {
+            let constants_sigmas_vecs = [constant_vecs, sigma_vecs.clone()].concat();
+            PolynomialBatch::<F, C, D>::from_values(
+                constants_sigmas_vecs,
+                rate_bits,
+                PlonkOracle::CONSTANTS_SIGMAS.blinding,
+                cap_height,
+                &mut timing,
+                Some(&fft_root_table),
+            )
+        } else {
+            PolynomialBatch::<F, C, D>::default()
+        };
 
         // Map between gates where not all generators are used and the gate's number of used generators.
         let incomplete_gates = self
@@ -1145,6 +1158,17 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         }
     }
 
+    pub fn build<C: GenericConfig<D, F = F>>(self) -> CircuitData<F, C, D> {
+        self.build_with_options(true)
+    }
+
+    pub fn mock_build<C: GenericConfig<D, F = F>>(self) -> MockCircuitData<F, C, D> {
+        let circuit_data = self.build_with_options(false);
+        MockCircuitData {
+            prover_only: circuit_data.prover_only,
+            common: circuit_data.common,
+        }
+    }
     /// Builds a "prover circuit", with data needed to generate proofs but not verify them.
     pub fn build_prover<C: GenericConfig<D, F = F>>(self) -> ProverCircuitData<F, C, D> {
         // TODO: Can skip parts of this.
