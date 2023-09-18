@@ -43,8 +43,8 @@ where
     let constraint_evals = (0..size)
         .map(|i| {
             let vars = StarkEvaluationVars {
-                local_values: &trace_ldes[i].clone().try_into().unwrap(),
-                next_values: &trace_ldes[(i + (1 << rate_bits)) % size]
+                local_values: trace_ldes[i].clone(),
+                next_values: trace_ldes[(i + (1 << rate_bits)) % size]
                     .clone()
                     .try_into()
                     .unwrap(),
@@ -92,8 +92,8 @@ where
 {
     // Compute native constraint evaluation on random values.
     let vars = StarkEvaluationVars {
-        local_values: &F::Extension::rand_array::<{ S::COLUMNS }>(),
-        next_values: &F::Extension::rand_array::<{ S::COLUMNS }>(),
+        local_values: F::Extension::rand_array::<{ S::COLUMNS }>().to_vec(),
+        next_values: F::Extension::rand_array::<{ S::COLUMNS }>().to_vec(),
         public_inputs: &F::Extension::rand_array::<{ S::PUBLIC_INPUTS }>(),
     };
     let alphas = F::rand_vec(1);
@@ -110,7 +110,7 @@ where
         lagrange_first,
         lagrange_last,
     );
-    stark.eval_ext(vars, &mut consumer);
+    stark.eval_ext(&vars, &mut consumer);
     let native_eval = consumer.accumulators()[0];
 
     // Compute circuit constraint evaluation on same random values.
@@ -119,9 +119,9 @@ where
     let mut pw = PartialWitness::<F>::new();
 
     let locals_t = builder.add_virtual_extension_targets(S::COLUMNS);
-    pw.set_extension_targets(&locals_t, vars.local_values);
+    pw.set_extension_targets(&locals_t, &vars.local_values);
     let nexts_t = builder.add_virtual_extension_targets(S::COLUMNS);
-    pw.set_extension_targets(&nexts_t, vars.next_values);
+    pw.set_extension_targets(&nexts_t, &vars.next_values);
     let pis_t = builder.add_virtual_extension_targets(S::PUBLIC_INPUTS);
     pw.set_extension_targets(&pis_t, vars.public_inputs);
     let alphas_t = builder.add_virtual_targets(1);
