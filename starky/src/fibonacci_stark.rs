@@ -1,9 +1,5 @@
-//! An example of generating and verifying STARK proofs for the Fibonacci sequence.
-//! The toy STARK system also includes two columns that are a permutation of the other,
-//! to highlight the use of the permutation argument with logUp.
-
-#[cfg(not(feature = "std"))]
-use alloc::{vec, vec::Vec};
+use alloc::vec;
+use alloc::vec::Vec;
 use core::marker::PhantomData;
 
 use plonky2::field::extension::{Extendable, FieldExtension};
@@ -14,13 +10,17 @@ use plonky2::iop::ext_target::ExtensionTarget;
 use plonky2::plonk::circuit_builder::CircuitBuilder;
 
 use crate::constraint_consumer::{ConstraintConsumer, RecursiveConstraintConsumer};
-use crate::evaluation_frame::{StarkEvaluationFrame, StarkFrame};
+use crate::evaluation_frame::{
+    StarkEvaluationFrame, StarkEvaluationFrameTarget, StarkFrame, StarkFrameTarget,
+};
+use crate::permutation::PermutationPair;
 use crate::stark::Stark;
 use crate::util::trace_rows_to_poly_values;
 
 /// Toy STARK system used for testing.
-/// Computes a Fibonacci sequence with state `[x0, x1]` using the state transition
-/// `x0' <- x1, x1' <- x0 + x1.
+/// Computes a Fibonacci sequence with state `[x0, x1, i, j]` using the state transition
+/// `x0' <- x1, x1' <- x0 + x1, i' <- i+1, j' <- j+1`.
+/// Note: The `i, j` columns are only used to test the permutation argument.
 #[derive(Copy, Clone)]
 struct FibonacciStark<F: RichField + Extendable<D>, const D: usize> {
     num_rows: usize,
@@ -36,42 +36,40 @@ impl<F: RichField + Extendable<D>, const D: usize> FibonacciStark<F, D> {
     // `num_rows`-th Fibonacci number.
     const PI_INDEX_RES: usize = 2;
 
-    const fn new(num_rows: usize) -> Self {
+    fn new(num_rows: usize) -> Self {
         Self {
             num_rows,
             _phantom: PhantomData,
         }
     }
 
-    /// Generate the trace using `x0, x1` as initial state values.
+    /// Generate the trace using `x0, x1, 0, 1` as initial state values.
     fn generate_trace(&self, x0: F, x1: F) -> Vec<PolynomialValues<F>> {
-        let trace_rows = (0..self.num_rows)
-            .scan([x0, x1], |acc, _| {
+        let mut trace_rows = (0..self.num_rows)
+            .scan([x0, x1, F::ZERO, F::ONE], |acc, _| {
                 let tmp = *acc;
                 acc[0] = tmp[1];
                 acc[1] = tmp[0] + tmp[1];
+                acc[2] = tmp[2] + F::ONE;
+                acc[3] = tmp[3] + F::ONE;
                 Some(tmp)
             })
             .collect::<Vec<_>>();
+        trace_rows[self.num_rows - 1][3] = F::ZERO; // So that column 2 and 3 are permutation of one another.
         trace_rows_to_poly_values(trace_rows)
     }
 }
 
-const FIBONACCI_COLUMNS: usize = 2;
-const FIBONACCI_PUBLIC_INPUTS: usize = 3;
-
 impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for FibonacciStark<F, D> {
-    type EvaluationFrame<FE, P, const D2: usize> = StarkFrame<P, P::Scalar, FIBONACCI_COLUMNS, FIBONACCI_PUBLIC_INPUTS>
+    type EvaluationFrame<FE, P, const D2: usize> = StarkFrame<FE, P, 3, 3>
     where
         FE: FieldExtension<D2, BaseField = F>,
         P: PackedField<Scalar = FE>;
 
-    type EvaluationFrameTarget = StarkFrame<
-        ExtensionTarget<D>,
-        ExtensionTarget<D>,
-        FIBONACCI_COLUMNS,
-        FIBONACCI_PUBLIC_INPUTS,
-    >;
+    type EvaluationFrameTarget = StarkFrameTarget<ExtensionTarget<D>, 3, 3>;
+
+    const COLUMNS: usize = 3;
+    const PUBLIC_INPUTS: usize = 3;
 
     fn eval_packed_generic<FE, P, const D2: usize>(
         &self,
@@ -129,6 +127,10 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for FibonacciStar
     fn constraint_degree(&self) -> usize {
         2
     }
+
+    fn permutation_pairs(&self) -> Vec<PermutationPair> {
+        vec![PermutationPair::singletons(2, 3)]
+    }
 }
 
 #[cfg(test)]
@@ -169,14 +171,13 @@ mod tests {
         let config = StarkConfig::standard_fast_config();
         let num_rows = 1 << 5;
         let public_inputs = [F::ZERO, F::ONE, fibonacci(num_rows - 1, F::ZERO, F::ONE)];
-
         let stark = S::new(num_rows);
         let trace = stark.generate_trace(public_inputs[0], public_inputs[1]);
         let proof = prove::<F, C, S, D>(
             stark,
             &config,
             trace,
-            &public_inputs,
+            public_inputs,
             &mut TimingTree::default(),
         )?;
 
@@ -204,7 +205,8 @@ mod tests {
 
         let num_rows = 1 << 5;
         let stark = S::new(num_rows);
-        test_stark_circuit_constraints::<F, C, S, D>(stark)
+        let pis = [F::ZERO, F::ONE, fibonacci(num_rows - 1, F::ZERO, F::ONE)];
+        test_stark_circuit_constraints::<F, C, S, D>(stark, pis)
     }
 
     #[test]
@@ -218,15 +220,13 @@ mod tests {
         let config = StarkConfig::standard_fast_config();
         let num_rows = 1 << 5;
         let public_inputs = [F::ZERO, F::ONE, fibonacci(num_rows - 1, F::ZERO, F::ONE)];
-
-        // Test first STARK
         let stark = S::new(num_rows);
         let trace = stark.generate_trace(public_inputs[0], public_inputs[1]);
         let proof = prove::<F, C, S, D>(
             stark,
             &config,
             trace,
-            &public_inputs,
+            public_inputs,
             &mut TimingTree::default(),
         )?;
         verify_stark_proof(stark, proof.clone(), &config)?;
@@ -248,14 +248,15 @@ mod tests {
     ) -> Result<()>
     where
         InnerC::Hasher: AlgebraicHasher<F>,
+        [(); S::COLUMNS]:,
+        [(); S::PUBLIC_INPUTS]:,
     {
         let circuit_config = CircuitConfig::standard_recursion_config();
         let mut builder = CircuitBuilder::<F, D>::new(circuit_config);
         let mut pw = PartialWitness::new();
         let degree_bits = inner_proof.proof.recover_degree_bits(inner_config);
-        let pt =
-            add_virtual_stark_proof_with_pis(&mut builder, &stark, inner_config, degree_bits, 0, 0);
-        set_stark_proof_with_pis_target(&mut pw, &pt, &inner_proof, builder.zero());
+        let pt = add_virtual_stark_proof_with_pis(&mut builder, stark, inner_config, degree_bits);
+        set_stark_proof_with_pis_target(&mut pw, &pt, &inner_proof);
 
         verify_stark_proof_circuit::<F, InnerC, S, D>(&mut builder, stark, pt, inner_config);
 

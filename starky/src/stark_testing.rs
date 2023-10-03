@@ -1,7 +1,5 @@
-//! Utility module for testing [`Stark`] implementation.
-
-#[cfg(not(feature = "std"))]
-use alloc::{vec, vec::Vec};
+use alloc::vec;
+use alloc::vec::Vec;
 
 use anyhow::{ensure, Result};
 use plonky2::field::extension::{Extendable, FieldExtension};
@@ -15,7 +13,7 @@ use plonky2::plonk::config::GenericConfig;
 use plonky2::util::{log2_ceil, log2_strict, transpose};
 
 use crate::constraint_consumer::{ConstraintConsumer, RecursiveConstraintConsumer};
-use crate::evaluation_frame::StarkEvaluationFrame;
+use crate::evaluation_frame::{StarkEvaluationFrame, StarkEvaluationFrameTarget};
 use crate::stark::Stark;
 
 const WITNESS_SIZE: usize = 1 << 5;
@@ -24,12 +22,16 @@ const WITNESS_SIZE: usize = 1 << 5;
 /// low-degree witness polynomials.
 pub fn test_stark_low_degree<F: RichField + Extendable<D>, S: Stark<F, D>, const D: usize>(
     stark: S,
-) -> Result<()> {
+) -> Result<()>
+where
+    [(); S::COLUMNS]:,
+    [(); S::PUBLIC_INPUTS]:,
+{
     let rate_bits = log2_ceil(stark.constraint_degree() + 1);
 
     let trace_ldes = random_low_degree_matrix::<F>(S::COLUMNS, rate_bits);
     let size = trace_ldes.len();
-    let public_inputs = F::rand_vec(S::PUBLIC_INPUTS);
+    let public_inputs = F::rand_array::<{ S::PUBLIC_INPUTS }>();
 
     let lagrange_first = PolynomialValues::selector(WITNESS_SIZE, 0).lde(rate_bits);
     let lagrange_last = PolynomialValues::selector(WITNESS_SIZE, WITNESS_SIZE - 1).lde(rate_bits);
@@ -58,7 +60,7 @@ pub fn test_stark_low_degree<F: RichField + Extendable<D>, S: Stark<F, D>, const
         .collect::<Vec<_>>();
 
     let constraint_eval_degree = PolynomialValues::new(constraint_evals).degree();
-    let maximum_degree = (WITNESS_SIZE * stark.constraint_degree()).saturating_sub(1);
+    let maximum_degree = WITNESS_SIZE * stark.constraint_degree() - 1;
 
     ensure!(
         constraint_eval_degree <= maximum_degree,
@@ -80,12 +82,17 @@ pub fn test_stark_circuit_constraints<
     const D: usize,
 >(
     stark: S,
-) -> Result<()> {
+    public_inputs: [F; S::PUBLIC_INPUTS],
+) -> Result<()>
+where
+    [(); S::COLUMNS]:,
+    [(); S::PUBLIC_INPUTS]:,
+{
     // Compute native constraint evaluation on random values.
     let vars = S::EvaluationFrame::from_values(
-        &F::Extension::rand_vec(S::COLUMNS),
-        &F::Extension::rand_vec(S::COLUMNS),
-        &F::Extension::rand_vec(S::PUBLIC_INPUTS),
+        &F::Extension::rand_array::<{ S::COLUMNS }>(),
+        &F::Extension::rand_array::<{ S::COLUMNS }>(),
+        &F::Extension::rand_array::<{ S::PUBLIC_INPUTS }>(),
     );
     let alphas = F::rand_vec(1);
     let z_last = F::Extension::rand();
@@ -113,7 +120,14 @@ pub fn test_stark_circuit_constraints<
     let nexts_t = builder.add_virtual_extension_targets(S::COLUMNS);
     pw.set_extension_targets(&nexts_t, vars.get_next_values());
     let pis_t = builder.add_virtual_extension_targets(S::PUBLIC_INPUTS);
-    pw.set_extension_targets(&pis_t, vars.get_public_inputs());
+    pw.set_extension_targets(
+        &pis_t,
+        &public_inputs
+            .iter()
+            .copied()
+            .map(F::Extension::from_basefield)
+            .collect::<Vec<_>>(),
+    );
     let alphas_t = builder.add_virtual_targets(1);
     pw.set_target(alphas_t[0], alphas[0]);
     let z_last_t = builder.add_virtual_extension_target();
