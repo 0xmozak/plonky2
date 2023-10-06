@@ -180,10 +180,10 @@ pub trait Poseidon2: PrimeField64 {
 
         for i in 0..t4 {
             let start_index = i * 4;
-            let inp0 = u128::from(input[start_index].to_noncanonical_u64());
-            let inp1 = u128::from(input[start_index + 1].to_noncanonical_u64());
-            let inp2 = u128::from(input[start_index + 2].to_noncanonical_u64());
-            let inp3 = u128::from(input[start_index + 3].to_noncanonical_u64());
+            let inp0 = input[start_index].to_noncanonical_u64() as u128;
+            let inp1 = input[start_index + 1].to_noncanonical_u64() as u128;
+            let inp2 = input[start_index + 2].to_noncanonical_u64() as u128;
+            let inp3 = input[start_index + 3].to_noncanonical_u64() as u128;
             let mut t_0 = inp0;
 
             t_0 = t_0 + inp1;
@@ -196,7 +196,7 @@ pub trait Poseidon2: PrimeField64 {
             //t_2 = t_2.add(t_2);
             //t_2 = t_2.add(t_1);
             //// t_2 = t_2.multiply_accumulate(input[start_index + 1], Self::TWO);
-            t_2 = t_2 + inp1 + inp1;
+            t_2 = t_2 + 2 * inp1;
             //t_2 += t_1;
             //let mut t_3 = input[start_index + 3];
             let mut t_3 = t_0;
@@ -236,10 +236,10 @@ pub trait Poseidon2: PrimeField64 {
             //t_7 += t_4;
             //t_7 = t_7.add(t_4);
 
-            input[start_index] = Self::from_noncanonical_u128(t_3 + t_5);
-            input[start_index + 1] = Self::from_noncanonical_u128(t_5);
-            input[start_index + 2] = Self::from_noncanonical_u128(t_2 + t_4);
-            input[start_index + 3] = Self::from_noncanonical_u128(t_4);
+            input[start_index] = Self::from_noncanonical_u96(u64_u32(t_3 + t_5));
+            input[start_index + 1] = Self::from_noncanonical_u96(u64_u32(t_5));
+            input[start_index + 2] = Self::from_noncanonical_u96(u64_u32(t_2 + t_4));
+            input[start_index + 3] = Self::from_noncanonical_u96(u64_u32(t_4));
         }
     }
 
@@ -612,35 +612,9 @@ impl<F: RichField> AlgebraicHasher<F> for Poseidon2Hash {
     }
 }
 
-#[derive(Copy, Clone)]
-struct U72 {
-    low: u64,
-    high: u8,
-}
-
-impl Add<Self> for U72 {
-    type Output = Self;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        let (low, overflow) = self.low.overflowing_add(rhs.low);
-        Self {
-            low,
-            high: self.high + rhs.high + overflow as u8
-        }
-    }
-}
-
-impl From<u64> for U72 {
-    fn from(value: u64) -> Self {
-        Self {low: value, high: 0}
-    }
-}
-
-impl Into<(u64, u32)> for U72 { 
-    fn into(self) -> (u64, u32) {
-        (self.low, self.high as u32)
-    }
-
+#[inline]
+fn u64_u32(x: u128) -> (u64, u32) {
+    (x as u64, (x >> 64) as u32)
 }
 
 #[cfg(test)]
