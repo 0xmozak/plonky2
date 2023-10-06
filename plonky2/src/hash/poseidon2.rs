@@ -180,23 +180,23 @@ pub trait Poseidon2: PrimeField64 {
 
         for i in 0..t4 {
             let start_index = i * 4;
-            let inp0 = U72::from(input[start_index].to_noncanonical_u64());
-            let inp1 = U72::from(input[start_index + 1].to_noncanonical_u64());
-            let inp2 = U72::from(input[start_index + 2].to_noncanonical_u64());
-            let inp3 = U72::from(input[start_index + 3].to_noncanonical_u64());
+            let inp0 = u128::from(input[start_index].to_noncanonical_u64());
+            let inp1 = u128::from(input[start_index + 1].to_noncanonical_u64());
+            let inp2 = u128::from(input[start_index + 2].to_noncanonical_u64());
+            let inp3 = u128::from(input[start_index + 3].to_noncanonical_u64());
             let mut t_0 = inp0;
 
-            t_0 = t_0 + &inp1;
+            t_0 = t_0 + inp1;
             let mut t_1 = inp2;
 
-            t_1 = t_1 + &inp3;
+            t_1 = t_1 + inp3;
             let mut t_2 = t_1;
             // let mut t_2 = input[start_index + 1];
             //t_2 *= Self::from_canonical_u8(2);
             //t_2 = t_2.add(t_2);
             //t_2 = t_2.add(t_1);
             //// t_2 = t_2.multiply_accumulate(input[start_index + 1], Self::TWO);
-            t_2 = t_2 + &inp1 + &inp1;
+            t_2 = t_2 + inp1 + inp1;
             //t_2 += t_1;
             //let mut t_3 = input[start_index + 3];
             let mut t_3 = t_0;
@@ -205,7 +205,7 @@ pub trait Poseidon2: PrimeField64 {
             //t_3 = t_3.add(t_3);
             //t_3 = t_3.add(t_0);
             // // t_3 = t_3.multiply_accumulate(input[start_index + 3], Self::TWO);
-            t_3 = t_3 + &inp3 + &inp3;
+            t_3 = t_3 + 2 * inp3;
             // //let mut t_4 = t_1;
             let mut t_4 = t_3;
             //t_4 *= (F::from_canonical_u8(2));
@@ -215,7 +215,7 @@ pub trait Poseidon2: PrimeField64 {
             //t_4 = t_4.add(t_4);
             //t_4 = t_4.add(t_3);
             //// t_4 = t_4.multiply_accumulate(t_1, Self::TWO.double());
-            t_4 = t_4 + &t_1 + &t_1 + &t_1 + &t_1;
+            t_4 = t_4 + 4 * t_1;
             //t_4 += t_3;
             //let mut t_5 = t_0;
             let mut t_5 = t_2;
@@ -227,7 +227,7 @@ pub trait Poseidon2: PrimeField64 {
             //t_5 = t_5.add(t_5);
             //t_5 = t_5.add(t_2);
             // // t_5 = t_5.multiply_accumulate(t_0, Self::TWO.double());
-            t_5 = t_5 + &t_0 + &t_0 + &t_0 + &t_0;
+            t_5 = t_5 + 4 * t_0 ;
 
             //let mut t_6 = t_3;
             //t_6 += t_5;
@@ -236,10 +236,10 @@ pub trait Poseidon2: PrimeField64 {
             //t_7 += t_4;
             //t_7 = t_7.add(t_4);
 
-            input[start_index] = Self::from_noncanonical_u96((t_3 + &t_5).into());
-            input[start_index + 1] = Self::from_noncanonical_u96(t_5.into());
-            input[start_index + 2] = Self::from_noncanonical_u96((t_2 + &t_4).into());
-            input[start_index + 3] = Self::from_noncanonical_u96(t_4.into());
+            input[start_index] = Self::from_noncanonical_u128(t_3 + t_5);
+            input[start_index + 1] = Self::from_noncanonical_u128(t_5);
+            input[start_index + 2] = Self::from_noncanonical_u128(t_2 + t_4);
+            input[start_index + 3] = Self::from_noncanonical_u128(t_4);
         }
     }
 
@@ -618,10 +618,10 @@ struct U72 {
     high: u8,
 }
 
-impl Add<&Self> for U72 {
+impl Add<Self> for U72 {
     type Output = Self;
 
-    fn add(self, rhs: &Self) -> Self::Output {
+    fn add(self, rhs: Self) -> Self::Output {
         let (low, overflow) = self.low.overflowing_add(rhs.low);
         Self {
             low,
