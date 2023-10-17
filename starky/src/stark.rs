@@ -15,8 +15,8 @@ use plonky2::util::ceil_div_usize;
 
 use crate::config::StarkConfig;
 use crate::constraint_consumer::{ConstraintConsumer, RecursiveConstraintConsumer};
+use crate::evaluation_frame::StarkEvaluationFrame;
 use crate::permutation::PermutationPair;
-use crate::vars::{StarkEvaluationTargets, StarkEvaluationVars};
 
 pub struct LookupConfig {
     pub degree_bits: usize,
@@ -26,9 +26,17 @@ pub struct LookupConfig {
 /// Represents a STARK system.
 pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
     /// The total number of columns in the trace.
-    const COLUMNS: usize;
-    /// The number of public inputs.
-    const PUBLIC_INPUTS: usize;
+    const COLUMNS: usize = Self::EvaluationFrameTarget::COLUMNS;
+    const PUBLIC_INPUTS: usize = Self::EvaluationFrameTarget::PUBLIC_INPUTS;
+
+    /// This is used to evaluate constraints natively.
+    type EvaluationFrame<FE, P, const D2: usize>: StarkEvaluationFrame<P, FE>
+    where
+        FE: FieldExtension<D2, BaseField = F>,
+        P: PackedField<Scalar = FE>;
+
+    /// The `Target` version of `Self::EvaluationFrame`, used to evaluate constraints recursively.
+    type EvaluationFrameTarget: StarkEvaluationFrame<ExtensionTarget<D>, ExtensionTarget<D>>;
 
     /// Evaluate constraints at a vector of points.
     ///
@@ -38,7 +46,7 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
     /// constraints over `F`.
     fn eval_packed_generic<FE, P, const D2: usize>(
         &self,
-        vars: StarkEvaluationVars<FE, P, { Self::COLUMNS }, { Self::PUBLIC_INPUTS }>,
+        vars: &Self::EvaluationFrame<FE, P, D2>,
         yield_constr: &mut ConstraintConsumer<P>,
     ) where
         FE: FieldExtension<D2, BaseField = F>,
@@ -47,7 +55,7 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
     /// Evaluate constraints at a vector of points from the base field `F`.
     fn eval_packed_base<P: PackedField<Scalar = F>>(
         &self,
-        vars: StarkEvaluationVars<F, P, { Self::COLUMNS }, { Self::PUBLIC_INPUTS }>,
+        vars: &Self::EvaluationFrame<F, P, 1>,
         yield_constr: &mut ConstraintConsumer<P>,
     ) {
         self.eval_packed_generic(vars, yield_constr)
@@ -56,12 +64,7 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
     /// Evaluate constraints at a single point from the degree `D` extension field.
     fn eval_ext(
         &self,
-        vars: StarkEvaluationVars<
-            F::Extension,
-            F::Extension,
-            { Self::COLUMNS },
-            { Self::PUBLIC_INPUTS },
-        >,
+        vars: &Self::EvaluationFrame<F::Extension, F::Extension, D>,
         yield_constr: &mut ConstraintConsumer<F::Extension>,
     ) {
         self.eval_packed_generic(vars, yield_constr)
@@ -74,7 +77,7 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
     fn eval_ext_circuit(
         &self,
         builder: &mut CircuitBuilder<F, D>,
-        vars: StarkEvaluationTargets<D, { Self::COLUMNS }, { Self::PUBLIC_INPUTS }>,
+        vars: &Self::EvaluationFrameTarget,
         yield_constr: &mut RecursiveConstraintConsumer<F, D>,
     );
 
@@ -167,33 +170,44 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
         zeta: ExtensionTarget<D>,
         g: F,
         config: &StarkConfig,
+        lookup_cfg: Option<&LookupConfig>,
     ) -> FriInstanceInfoTarget<D> {
         let mut oracles = vec![];
 
         let trace_info = FriPolynomialInfo::from_range(oracles.len(), 0..Self::COLUMNS);
-        oracles.push(FriOracleInfo {
+        let trace_oracle = FriOracleInfo {
             num_polys: Self::COLUMNS,
             blinding: false,
-        });
-
-        let permutation_zs_info = if self.uses_permutation_args() {
-            let num_z_polys = self.num_permutation_batches(config);
-            let polys = FriPolynomialInfo::from_range(oracles.len(), 0..num_z_polys);
-            oracles.push(FriOracleInfo {
-                num_polys: num_z_polys,
-                blinding: false,
-            });
-            polys
-        } else {
-            vec![]
         };
+        oracles.push(trace_oracle);
+
+        let num_ctl_zs = lookup_cfg.map(|n| n.num_zs).unwrap_or_default();
+        let num_permutation_batches = self.num_permutation_batches(config);
+        let num_z_polys = num_permutation_batches + num_ctl_zs;
+
+        let permutation_zs_info = FriPolynomialInfo::from_range(oracles.len(), 0..num_z_polys);
+
+        let ctl_zs_info = FriPolynomialInfo::from_range(
+            oracles.len(),
+            num_permutation_batches..num_permutation_batches + num_ctl_zs,
+        );
+
+        let permutation_oracle = FriOracleInfo {
+            num_polys: num_z_polys,
+            blinding: false,
+        };
+
+        if self.uses_permutation_args() || lookup_cfg.is_some() {
+            oracles.push(permutation_oracle);
+        }
 
         let num_quotient_polys = self.quotient_degree_factor() * config.num_challenges;
         let quotient_info = FriPolynomialInfo::from_range(oracles.len(), 0..num_quotient_polys);
-        oracles.push(FriOracleInfo {
+        let quotient_oracle = FriOracleInfo {
             num_polys: num_quotient_polys,
             blinding: false,
-        });
+        };
+        oracles.push(quotient_oracle);
 
         let zeta_batch = FriBatchInfoTarget {
             point: zeta,
@@ -209,7 +223,18 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
             point: zeta_next,
             polynomials: [trace_info, permutation_zs_info].concat(),
         };
-        let batches = vec![zeta_batch, zeta_next_batch];
+        let mut batches = vec![zeta_batch, zeta_next_batch];
+
+        if let Some(lookup_cfg) = lookup_cfg {
+            let ctl_last_batch = FriBatchInfoTarget {
+                point: builder.constant_extension(
+                    F::Extension::primitive_root_of_unity(lookup_cfg.degree_bits).inverse(),
+                ),
+                polynomials: ctl_zs_info,
+            };
+
+            batches.push(ctl_last_batch);
+        }
 
         FriInstanceInfoTarget { oracles, batches }
     }
