@@ -7,8 +7,6 @@
 use alloc::{vec, vec::Vec};
 use core::marker::PhantomData;
 
-#[cfg(std)]
-use backtrace::Backtrace;
 use plonky2::field::extension::Extendable;
 use plonky2::field::packed::PackedField;
 use plonky2::field::types::Field;
@@ -39,7 +37,7 @@ pub struct ConstraintConsumer<P: PackedField> {
     lagrange_basis_last: P,
 
     ///  debug constraints
-    debug_api: bool,
+    pub debug_api: bool,
 }
 
 impl<P: PackedField> ConstraintConsumer<P> {
@@ -74,17 +72,7 @@ impl<P: PackedField> ConstraintConsumer<P> {
     }
 
     /// Add one constraint on all rows.
-    #[allow(clippy::collapsible_if)]
     pub fn constraint(&mut self, constraint: P) {
-        #[cfg(std)]
-        if std::intrinsics::unlikely(self.debug_api) {
-            if !constraint.is_zeros() {
-                println!(
-                    "ConstraintConsumer - DEBUG trace (non-zero-constraint): {:?}",
-                    Backtrace::new()
-                );
-            }
-        }
         for (&alpha, acc) in self.alphas.iter().zip(&mut self.constraint_accs) {
             *acc *= alpha;
             *acc += constraint;
@@ -120,7 +108,6 @@ impl<P: PackedField> ConstraintConsumer<P> {
     }
 
     pub fn debug_api_has_constraint_failed(&self) -> bool {
-        assert!(self.debug_api);
         !self.constraint_accs.iter().all(|e| e.is_zeros())
     }
 }
