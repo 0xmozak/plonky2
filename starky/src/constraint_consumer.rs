@@ -78,7 +78,7 @@ impl<P: PackedField> ConstraintConsumer<P> {
         #[cfg(feature = "std")]
         if self.debug_api && !constraint.is_zeros() {
             log::error!(
-                "ConstraintConsumer - DEBUG trace (non-zero-constraint): {:?}",
+                "ConstraintConsumer - DEBUG trace (non-zero-constraint): {}",
                 std::panic::Location::caller()
             );
         }
