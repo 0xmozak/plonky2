@@ -67,12 +67,21 @@ impl<P: PackedField> ConstraintConsumer<P> {
     /// Add one constraint valid on all rows except the last.
     ///
     /// Leaves degree unchanged.
+    #[track_caller]
     pub fn constraint_transition(&mut self, constraint: P) {
         self.constraint(constraint * self.z_last);
     }
 
     /// Add one constraint on all rows.
+    #[track_caller]
     pub fn constraint(&mut self, constraint: P) {
+        #[cfg(feature = "std")]
+        if self.debug_api && !constraint.is_zeros() {
+            log::error!(
+                "ConstraintConsumer - DEBUG trace (non-zero-constraint): {:?}",
+                std::panic::Location::caller()
+            );
+        }
         for (&alpha, acc) in self.alphas.iter().zip(&mut self.constraint_accs) {
             *acc *= alpha;
             *acc += constraint;
@@ -83,6 +92,7 @@ impl<P: PackedField> ConstraintConsumer<P> {
     /// first row of the trace.
     ///
     /// Increases degree by 1.
+    #[track_caller]
     pub fn constraint_first_row(&mut self, constraint: P) {
         self.constraint(constraint * self.lagrange_basis_first);
     }
@@ -91,6 +101,7 @@ impl<P: PackedField> ConstraintConsumer<P> {
     /// last row of the trace.
     ///
     /// Increases degree by 1.
+    #[track_caller]
     pub fn constraint_last_row(&mut self, constraint: P) {
         self.constraint(constraint * self.lagrange_basis_last);
     }
