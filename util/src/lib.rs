@@ -112,7 +112,10 @@ unsafe fn reverse_index_bits_in_place_small<T>(arr: &mut [T], lb_n: usize) {
         // BIT_REVERSE_6BIT holds 6-bit reverses. This shift makes them lb_n-bit reverses.
         let dst_shr_amt = 6 - lb_n;
         for src in 0..arr.len() {
-            let dst = (BIT_REVERSE_6BIT[src] as usize) >> dst_shr_amt;
+            // `wrapping_shr` handles the case when `arr.len() == 1`. In that case `src == 0`, so
+            // `src.reverse_bits() == 0`. `usize::wrapping_shr` by 64 is a no-op, but it gives the
+            // correct result.
+            let dst = (BIT_REVERSE_6BIT[src] as usize).wrapping_shr(dst_shr_amt as u32);
             if src < dst {
                 swap(arr.get_unchecked_mut(src), arr.get_unchecked_mut(dst));
             }
@@ -125,7 +128,10 @@ unsafe fn reverse_index_bits_in_place_small<T>(arr: &mut [T], lb_n: usize) {
         let dst_hi_shl_amt = lb_n - 6;
         for src_chunk in 0..(arr.len() >> 6) {
             let src_hi = src_chunk << 6;
-            let dst_lo = src_chunk.reverse_bits() >> dst_lo_shr_amt;
+            // `wrapping_shr` handles the case when `arr.len() == 1`. In that case `src == 0`, so
+            // `src.reverse_bits() == 0`. `usize::wrapping_shr` by 64 is a no-op, but it gives the
+            // correct result.
+            let dst_lo = src_chunk.reverse_bits().wrapping_shr(dst_lo_shr_amt as u32);
             for src_lo in 0..(1 << 6) {
                 let dst_hi = (BIT_REVERSE_6BIT[src_lo] as usize) << dst_hi_shl_amt;
                 let src = src_hi + src_lo;
