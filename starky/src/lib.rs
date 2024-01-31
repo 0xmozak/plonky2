@@ -21,3 +21,4 @@ pub mod verifier;
 
 #[cfg(test)]
 pub mod fibonacci_stark;
+pub mod mul_air;
