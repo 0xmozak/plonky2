@@ -22,9 +22,12 @@ itertools = { version = "0.11.0", default-features = false }
 log = { version = "0.4.14", default-features = false }
 plonky2_maybe_rayon = { path = "../maybe_rayon", default-features = false }
 plonky2 = { path = "../plonky2", default-features = false }
+rand = "0.8.5"
+serde = { version = "1.0.193", features = ["derive"] }
 
 [dev-dependencies]
 env_logger = { version = "0.10.0", default-features = false }
+postcard = { version = "1.0.0", default-features = false, features = ["alloc"] }
 
 # Display math equations properly in documentation
 [package.metadata.docs.rs]
