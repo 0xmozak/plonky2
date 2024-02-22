@@ -1,5 +1,8 @@
+#[cfg(not(feature = "std"))]
 use alloc::string::{String, ToString};
+#[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
+#[cfg(not(feature = "std"))]
 use alloc::{format, vec};
 use core::marker::PhantomData;
 
