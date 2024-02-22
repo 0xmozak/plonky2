@@ -5,7 +5,7 @@ version = "0.1.4"
 license = "MIT OR Apache-2.0"
 authors = ["Daniel Lubarov <daniel@lubarov.com>", "William Borgeaud <williamborgeaud@gmail.com>", "Nicholas Ward <npward@berkeley.edu>"]
 readme = "README.md"
-repository = "https://github.com/mir-protocol/plonky2"
+repository = "https://github.com/0xPolygonZero/plonky2"
 keywords = ["cryptography", "SNARK", "PLONK", "FRI"]
 categories = ["cryptography"]
 edition = "2021"
@@ -15,7 +15,7 @@ default = ["gate_testing", "parallel", "rand_chacha", "std", "timing"]
 gate_testing = []
 parallel = ["hashbrown/rayon", "plonky2_maybe_rayon/parallel"]
 std = ["anyhow/std", "rand/std", "itertools/use_std"]
-timing = ["std"]
+timing = ["std", "dep:web-time"]
 
 [dependencies]
 ahash = { version = "0.8.3", default-features = false, features = ["compile-time-rng"] } # NOTE: Be sure to keep this version the same as the dependency in `hashbrown`.
@@ -34,6 +34,7 @@ serde = { version = "1.0", default-features = false, features = ["derive", "rc"]
 serde_json = "1.0"
 static_assertions = { version = "1.1.0", default-features = false }
 unroll = { version = "0.1.5", default-features = false }
+web-time = { version = "1.0.0", optional = true }
 
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
 getrandom = { version = "0.2", default-features = false, features = ["js"] }
@@ -87,9 +88,6 @@ harness = false
 name = "reverse_index_bits"
 harness = false
 
-
-[profile.release]
-incremental = true
-lto = "fat"
-debug = true
-opt-level=3
+# Display math equations properly in documentation
+[package.metadata.docs.rs]
+rustdoc-args = ["--html-in-header", ".cargo/katex-header.html"]
