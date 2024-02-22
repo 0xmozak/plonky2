@@ -113,10 +113,7 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
         let trace_oracle = FriOracleInfo {
             num_polys: Self::COLUMNS,
             blinding: false,
-<<<<<<< HEAD
-=======
-        });
-
+        };
         let num_lookup_columns = self.num_lookup_helper_columns(config);
         let num_auxiliary_polys = num_lookup_columns + num_ctl_helpers + num_ctl_zs.len();
         let auxiliary_polys_info = if self.uses_lookups() || self.requires_ctls() {
@@ -128,7 +125,6 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
             aux_polys
         } else {
             vec![]
->>>>>>> upstream/main
         };
         oracles.push(trace_oracle);
 
@@ -173,9 +169,7 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
             point: zeta.scalar_mul(g),
             polynomials: [trace_info, auxiliary_polys_info].concat(),
         };
-<<<<<<< HEAD
         let mut batches = vec![zeta_batch, zeta_next_batch];
-
         if let Some(lookup_cfg) = lookup_cfg {
             let ctl_last_batch = FriBatchInfo {
                 point: F::Extension::primitive_root_of_unity(lookup_cfg.degree_bits).inverse(),
@@ -183,10 +177,7 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
             };
 
             batches.push(ctl_last_batch);
-=======
-
-        let mut batches = vec![zeta_batch, zeta_next_batch];
-
+        }
         if self.requires_ctls() {
             let ctl_zs_info = FriPolynomialInfo::from_range(
                 1, // auxiliary oracle index
@@ -198,7 +189,6 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
             };
 
             batches.push(ctl_first_batch);
->>>>>>> upstream/main
         }
 
         FriInstanceInfo { oracles, batches }
@@ -220,9 +210,7 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
         let trace_oracle = FriOracleInfo {
             num_polys: Self::COLUMNS,
             blinding: false,
-<<<<<<< HEAD
-=======
-        });
+        };
 
         let num_lookup_columns = self.num_lookup_helper_columns(config);
         let num_auxiliary_polys = num_lookup_columns + num_ctl_helper_polys + num_ctl_zs;
@@ -235,7 +223,6 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
             aux_polys
         } else {
             vec![]
->>>>>>> upstream/main
         };
         oracles.push(trace_oracle);
 
@@ -281,9 +268,7 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
             point: zeta_next,
             polynomials: [trace_info, auxiliary_polys_info].concat(),
         };
-<<<<<<< HEAD
         let mut batches = vec![zeta_batch, zeta_next_batch];
-
         if let Some(lookup_cfg) = lookup_cfg {
             let ctl_last_batch = FriBatchInfoTarget {
                 point: builder.constant_extension(
@@ -293,10 +278,7 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
             };
 
             batches.push(ctl_last_batch);
-=======
-
-        let mut batches = vec![zeta_batch, zeta_next_batch];
-
+        }
         if self.requires_ctls() {
             let ctl_zs_info = FriPolynomialInfo::from_range(
                 1, // auxiliary oracle index
@@ -308,7 +290,6 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
             };
 
             batches.push(ctl_first_batch);
->>>>>>> upstream/main
         }
 
         FriInstanceInfoTarget { oracles, batches }
