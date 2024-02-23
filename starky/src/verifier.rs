@@ -63,10 +63,10 @@ pub fn verify_stark_proof_with_challenges<F, C, S, const D: usize>(
     public_inputs: &[F],
     config: &StarkConfig,
 ) -> Result<()>
-where
-    F: RichField + Extendable<D>,
-    C: GenericConfig<D, F = F>,
-    S: Stark<F, D>,
+    where
+        F: RichField + Extendable<D>,
+        C: GenericConfig<D, F = F>,
+        S: Stark<F, D>,
 {
     log::debug!("Checking proof: {}", type_name::<S>());
 
@@ -194,7 +194,6 @@ where
             num_ctl_polys,
             num_ctl_zs,
             config,
-            None,
         ),
         &proof.openings.to_fri_openings(),
         &challenges.fri_challenges,
@@ -214,10 +213,10 @@ fn validate_proof_shape<F, C, S, const D: usize>(
     num_ctl_helpers: usize,
     num_ctl_zs: usize,
 ) -> anyhow::Result<()>
-where
-    F: RichField + Extendable<D>,
-    C: GenericConfig<D, F = F>,
-    S: Stark<F, D>,
+    where
+        F: RichField + Extendable<D>,
+        C: GenericConfig<D, F = F>,
+        S: Stark<F, D>,
 {
     let degree_bits = proof.recover_degree_bits(config);
 
@@ -290,10 +289,10 @@ fn check_lookup_options<F, C, S, const D: usize>(
     ctl_zs_first: &Option<Vec<F>>,
     config: &StarkConfig,
 ) -> Result<()>
-where
-    F: RichField + Extendable<D>,
-    C: GenericConfig<D, F = F>,
-    S: Stark<F, D>,
+    where
+        F: RichField + Extendable<D>,
+        C: GenericConfig<D, F = F>,
+        S: Stark<F, D>,
 {
     if stark.uses_lookups() || stark.requires_ctls() {
         let num_auxiliary = stark.num_lookup_helper_columns(config) + num_ctl_helpers + num_ctl_zs;

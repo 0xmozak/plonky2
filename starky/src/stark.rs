@@ -20,11 +20,6 @@ use crate::constraint_consumer::{ConstraintConsumer, RecursiveConstraintConsumer
 use crate::evaluation_frame::StarkEvaluationFrame;
 use crate::lookup::Lookup;
 
-pub struct LookupConfig {
-    pub degree_bits: usize,
-    pub num_zs: usize,
-}
-
 /// Represents a STARK system.
 pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
     /// The total number of columns in the trace.
@@ -34,9 +29,9 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
 
     /// This is used to evaluate constraints natively.
     type EvaluationFrame<FE, P, const D2: usize>: StarkEvaluationFrame<P, FE>
-    where
-        FE: FieldExtension<D2, BaseField = F>,
-        P: PackedField<Scalar = FE>;
+        where
+            FE: FieldExtension<D2, BaseField = F>,
+            P: PackedField<Scalar = FE>;
 
     /// The `Target` version of `Self::EvaluationFrame`, used to evaluate constraints recursively.
     type EvaluationFrameTarget: StarkEvaluationFrame<ExtensionTarget<D>, ExtensionTarget<D>>;
@@ -89,7 +84,7 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
 
     /// Outputs the maximum quotient polynomial's degree factor of this [`Stark`].
     fn quotient_degree_factor(&self) -> usize {
-        2.max(self.constraint_degree()) - 1
+        1.max(self.constraint_degree() - 1)
     }
 
     /// Outputs the number of quotient polynomials this [`Stark`] would require with

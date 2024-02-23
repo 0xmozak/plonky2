@@ -106,6 +106,7 @@ impl<P: PackedField> ConstraintConsumer<P> {
         self.constraint(constraint * self.lagrange_basis_last);
     }
 
+    /// Creates a new instance of [`ConstraintConsumer`] for debugging purposes.
     pub fn new_debug_api(is_first: bool, is_last: bool) -> Self {
         let convert = |b: bool| P::from(P::Scalar::from_bool(b));
         Self {
@@ -118,6 +119,7 @@ impl<P: PackedField> ConstraintConsumer<P> {
         }
     }
 
+    /// Returns `true` if any constraint has failed.
     pub fn debug_api_has_constraint_failed(&self) -> bool {
         !self.constraint_accs.iter().all(|e| e.is_zeros())
     }

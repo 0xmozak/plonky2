@@ -25,10 +25,7 @@ hashbrown = { workspace = true }
 itertools = { workspace = true }
 keccak-hash = { version = "0.10.0", default-features = false }
 log = { workspace = true }
-plonky2_maybe_rayon = { path = "../maybe_rayon", default-features = false }
 num = { workspace = true }
-plonky2_field = { path = "../field", default-features = false }
-plonky2_util = { path = "../util", default-features = false }
 rand = { workspace = true }
 rand_chacha = { version = "0.3.1", optional = true, default-features = false }
 serde = { workspace = true, features = ["rc"] }
