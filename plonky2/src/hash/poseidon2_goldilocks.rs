@@ -4,6 +4,9 @@
 //! `poseidon_constants.sage` script in the `mir-protocol/hash-constants`
 //! repository.
 
+#[cfg(not(all(target_arch = "aarch64", target_feature = "neon")))]
+use plonky2_field::types::Field;
+
 use plonky2_field::goldilocks_field::GoldilocksField;
 
 use crate::hash::poseidon2::{Poseidon2, ROUND_F_END, ROUND_P, WIDTH};
@@ -151,6 +154,9 @@ impl Poseidon2 for GoldilocksField {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(not(feature = "std"))]
+    use alloc::{vec, vec::Vec};
+
     use plonky2_field::goldilocks_field::GoldilocksField as F;
     use plonky2_field::types::{Field, PrimeField64};
 

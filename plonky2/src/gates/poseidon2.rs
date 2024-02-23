@@ -510,6 +510,9 @@ impl<F: RichField + Extendable<D>, const D: usize> SimpleGenerator<F, D>
 
 #[cfg(test)]
 mod tests {
+    #[cfg(not(feature = "std"))]
+    use alloc::{vec, vec::Vec};
+
     use anyhow::Result;
     use plonky2_field::goldilocks_field::GoldilocksField;
     use plonky2_field::types::Field;
