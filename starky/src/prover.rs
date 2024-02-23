@@ -41,10 +41,10 @@ pub fn prove<F, C, S, const D: usize>(
     public_inputs: &[F],
     timing: &mut TimingTree,
 ) -> Result<StarkProofWithPublicInputs<F, C, D>>
-    where
-        F: RichField + Extendable<D>,
-        C: GenericConfig<D, F = F>,
-        S: Stark<F, D>,
+where
+    F: RichField + Extendable<D>,
+    C: GenericConfig<D, F = F>,
+    S: Stark<F, D>,
 {
     let degree = trace_poly_values[0].len();
     let degree_bits = log2_strict(degree);
@@ -104,10 +104,10 @@ pub fn prove_with_commitment<F, C, S, const D: usize>(
     public_inputs: &[F],
     timing: &mut TimingTree,
 ) -> Result<StarkProofWithPublicInputs<F, C, D>>
-    where
-        F: RichField + Extendable<D>,
-        C: GenericConfig<D, F = F>,
-        S: Stark<F, D>,
+where
+    F: RichField + Extendable<D>,
+    C: GenericConfig<D, F = F>,
+    S: Stark<F, D>,
 {
     let degree = trace_poly_values[0].len();
     let degree_bits = log2_strict(degree);
@@ -343,11 +343,11 @@ fn compute_quotient_polys<'a, F, P, C, S, const D: usize>(
     num_ctl_columns: &[usize],
     config: &StarkConfig,
 ) -> Vec<PolynomialCoeffs<F>>
-    where
-        F: RichField + Extendable<D>,
-        P: PackedField<Scalar = F>,
-        C: GenericConfig<D, F = F>,
-        S: Stark<F, D>,
+where
+    F: RichField + Extendable<D>,
+    P: PackedField<Scalar = F>,
+    C: GenericConfig<D, F = F>,
+    S: Stark<F, D>,
 {
     let degree = 1 << degree_bits;
     let rate_bits = config.fri_config.rate_bits;
@@ -445,7 +445,7 @@ fn compute_quotient_polys<'a, F, P, C, S, const D: usize>(
                             .unwrap()
                             .get_lde_values_packed(i_start, step)
                             [num_lookup_columns + start_index
-                            ..num_lookup_columns + start_index + num_ctl_helper_cols]
+                                ..num_lookup_columns + start_index + num_ctl_helper_cols]
                             .to_vec();
 
                         let ctl_vars = CtlCheckVars::<F, F, P, 1> {
@@ -606,7 +606,7 @@ fn check_constraints<'a, F, C, S, const D: usize>(
                         let num_helper_cols = num_ctl_helper_cols[iii];
                         let helper_columns = auxiliary_subgroup_evals.as_ref().unwrap()[i]
                             [num_lookup_columns + start_index
-                            ..num_lookup_columns + start_index + num_helper_cols]
+                                ..num_lookup_columns + start_index + num_helper_cols]
                             .to_vec();
                         let ctl_vars = CtlCheckVars::<F, F, F, 1> {
                             helper_columns,

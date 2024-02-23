@@ -29,9 +29,9 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
 
     /// This is used to evaluate constraints natively.
     type EvaluationFrame<FE, P, const D2: usize>: StarkEvaluationFrame<P, FE>
-        where
-            FE: FieldExtension<D2, BaseField = F>,
-            P: PackedField<Scalar = FE>;
+    where
+        FE: FieldExtension<D2, BaseField = F>,
+        P: PackedField<Scalar = FE>;
 
     /// The `Target` version of `Self::EvaluationFrame`, used to evaluate constraints recursively.
     type EvaluationFrameTarget: StarkEvaluationFrame<ExtensionTarget<D>, ExtensionTarget<D>>;
@@ -136,7 +136,7 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
                 auxiliary_polys_info.clone(),
                 quotient_info,
             ]
-                .concat(),
+            .concat(),
         };
         let zeta_next_batch = FriBatchInfo {
             point: zeta.scalar_mul(g),
@@ -205,7 +205,7 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
                 auxiliary_polys_info.clone(),
                 quotient_info,
             ]
-                .concat(),
+            .concat(),
         };
         let zeta_next = builder.mul_const_extension(g, zeta);
         let zeta_next_batch = FriBatchInfoTarget {
