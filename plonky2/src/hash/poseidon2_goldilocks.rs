@@ -5,8 +5,6 @@
 //! repository.
 
 use plonky2_field::goldilocks_field::GoldilocksField;
-#[cfg(not(all(target_arch = "aarch64", target_feature = "neon")))]
-use plonky2_field::types::Field;
 
 use crate::hash::poseidon2::{Poseidon2, ROUND_F_END, ROUND_P, WIDTH};
 
