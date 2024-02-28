@@ -5,6 +5,8 @@ use core::mem::transmute;
 use itertools::Itertools;
 use plonky2_field::types::Field;
 use plonky2_maybe_rayon::*;
+use rustacuda::memory::{AsyncCopyDestination, DeviceBuffer};
+use rustacuda::prelude::*;
 
 use crate::field::extension::Extendable;
 use crate::field::fft::FftRootTable;
@@ -15,26 +17,13 @@ use crate::fri::prover::fri_proof;
 use crate::fri::structure::{FriBatchInfo, FriInstanceInfo};
 use crate::fri::FriParams;
 use crate::hash::hash_types::RichField;
-use crate::hash::merkle_tree::MerkleTree;
-use crate::hash::merkle_tree::MerkleCap;
+use crate::hash::merkle_tree::{MerkleCap, MerkleTree};
 use crate::iop::challenger::Challenger;
+use crate::plonk::config::{GenericConfig, Hasher};
 use crate::timed;
 use crate::util::reducing::ReducingFactor;
 use crate::util::timing::TimingTree;
 use crate::util::{log2_strict, reverse_bits, reverse_index_bits_in_place, transpose};
-use rustacuda::prelude::*;
-use rustacuda::memory::DeviceBuffer;
-use crate::plonk::config::GenericConfig;
-use rustacuda::memory::AsyncCopyDestination;
-use crate::plonk::config::Hasher;
-
-
-
-
-
-
-
-
 
 /// Four (~64 bit) field elements gives ~128 bit security.
 pub const SALT_SIZE: usize = 4;
@@ -43,20 +32,17 @@ pub const SALT_SIZE: usize = 4;
 pub struct CudaInnerContext {
     pub stream: rustacuda::stream::Stream,
     pub stream2: rustacuda::stream::Stream,
-
 }
 
 #[derive(Debug)]
 #[repr(C)]
-pub struct CudaInvContext<F: RichField + Extendable<D>, const D: usize>
-{
+pub struct CudaInvContext<F: RichField + Extendable<D>, const D: usize> {
     pub inner: CudaInnerContext,
-    pub root_table_device: DeviceBuffer::<F>,
-    pub root_table_device2: DeviceBuffer::<F>,
+    pub root_table_device: DeviceBuffer<F>,
+    pub root_table_device2: DeviceBuffer<F>,
     pub shift_powers_device: DeviceBuffer<F>,
     pub ctx: Context,
 }
-
 
 /// Represents a FRI oracle, i.e. a batch of polynomials which have been Merklized.
 #[derive(Eq, PartialEq, Debug)]
@@ -94,7 +80,6 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         timing: &mut TimingTree,
         fft_root_table: Option<&FftRootTable<F>>,
     ) -> Self {
-
         let coeffs;
         coeffs = timed!(
             timing,
@@ -102,7 +87,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
             values.into_par_iter().map(|v| v.ifft()).collect::<Vec<_>>()
         );
         // log::info!("coeffs {:?}", coeffs);
-        
+
         Self::from_coeffs(
             coeffs,
             rate_bits,
@@ -113,7 +98,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         )
     }
     /// Creates a list polynomial commitment for the polynomials interpolating the values in `values`.
-        #[cfg(feature = "cuda")]
+    #[cfg(feature = "cuda")]
     pub fn from_values_cuda(
         values: Vec<PolynomialValues<F>>,
         rate_bits: usize,
@@ -122,161 +107,173 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         timing: &mut TimingTree,
         poly_num: usize,
         values_num_per_poly: usize,
-        ctx: &mut CudaInvContext<F, D>
+        ctx: &mut CudaInvContext<F, D>,
     ) -> Self {
+        let coeffs: Vec<PolynomialCoeffs<F>>;
 
-        let coeffs;
-        
         {
             let salt_size = if blinding { SALT_SIZE } else { 0 };
             use rustacuda::memory::DeviceSlice;
             let len_cap = 1 << cap_height;
-            let num_digests = 2 * (values_num_per_poly*(1<<rate_bits) - len_cap);
+            let num_digests = 2 * (values_num_per_poly * (1 << rate_bits) - len_cap);
             let num_digests_and_caps = num_digests + len_cap;
 
-            let values_flatten_len = poly_num*values_num_per_poly;
-            let ext_values_flatten_len = (values_flatten_len+salt_size*values_num_per_poly) * (1<<rate_bits);
+            let values_flatten_len = poly_num * values_num_per_poly;
+            let ext_values_flatten_len =
+                (values_flatten_len + salt_size * values_num_per_poly) * (1 << rate_bits);
             let digests_and_caps_buf_len = num_digests_and_caps;
-            let mut digests_and_caps_buf :Vec<<<C as GenericConfig<D>>::Hasher as Hasher<F>>::Hash> = Vec::with_capacity(num_digests_and_caps);
+            let mut digests_and_caps_buf: Vec<
+                <<C as GenericConfig<D>>::Hasher as Hasher<F>>::Hash,
+            > = Vec::with_capacity(num_digests_and_caps);
             unsafe {
                 digests_and_caps_buf.set_len(num_digests_and_caps);
             }
 
             let pad_extvalues_len = ext_values_flatten_len;
-            let mut ext_values_flatten :Vec<F> = Vec::with_capacity(ext_values_flatten_len);
+            let mut ext_values_flatten: Vec<F> = Vec::with_capacity(ext_values_flatten_len);
             unsafe {
                 ext_values_flatten.set_len(ext_values_flatten_len);
             }
-            let ext_values_device_offset = 0;
-            let lg_n = log2_strict(values_num_per_poly );
+            let lg_n = log2_strict(values_num_per_poly);
             let n_inv = F::inverse_2exp(lg_n);
-            let n_inv_ptr  : *const F = &n_inv; 
-            let mut values_device = unsafe { DeviceBuffer::<F>::uninitialized(pad_extvalues_len + ext_values_flatten_len + digests_and_caps_buf.len() * 4).unwrap() };
-            let root_table_device = & ctx.root_table_device;
-            let root_table_device2 = & ctx.root_table_device2;
-            let shift_powers_device = & ctx.shift_powers_device;
-
+            let n_inv_ptr: *const F = &n_inv;
+            let mut values_device =
+                unsafe { DeviceBuffer::<F>::uninitialized(values_flatten_len).unwrap() };
+            let root_table_device = &ctx.root_table_device;
+            let root_table_device2 = &ctx.root_table_device2;
+            let shift_powers_device = &ctx.shift_powers_device;
 
             let mut values_flatten = timed!(
                 timing,
                 "flat map",
-                values.into_par_iter().flat_map(|poly| poly.values).collect::<Vec<F>>()
+                values
+                    .into_par_iter()
+                    .flat_map(|poly| poly.values)
+                    .collect::<Vec<F>>()
             );
 
-            timed!(
-                timing,
-                "copy values to GPU",
-                unsafe {
-                    transmute::<&mut DeviceSlice<F>, &mut DeviceSlice<u64>>(&mut values_device[0..values_flatten_len]).async_copy_from(
-                        transmute::<&Vec<F>, &Vec<u64>>(&values_flatten),
-                        &ctx.inner.stream
-                    ).unwrap();
-                    ctx.inner.stream.synchronize().unwrap();
-                }
-            );
+            timed!(timing, "copy values to GPU", unsafe {
+                transmute::<&mut DeviceSlice<F>, &mut DeviceSlice<u64>>(
+                    &mut values_device[0..values_flatten_len],
+                )
+                .async_copy_from(
+                    transmute::<&Vec<F>, &Vec<u64>>(&values_flatten),
+                    &ctx.inner.stream,
+                )
+                .unwrap();
+                ctx.inner.stream.synchronize().unwrap();
+            });
             let ctx_ptr: *mut CudaInnerContext = &mut ctx.inner;
-            timed!(
-                timing,
-                "IFFT on GPU",
-                unsafe {
-                plonky2_cuda::ifft(
+            timed!(timing, "IFFT on GPU", unsafe {
+                let err = plonky2_cuda::ifft(
                     values_device.as_mut_ptr() as *mut u64,
-                    poly_num as i32, values_num_per_poly as i32,
+                    poly_num as i32,
+                    values_num_per_poly as i32,
                     lg_n as i32,
                     root_table_device.as_ptr() as *const u64,
                     n_inv_ptr as *const u64,
                     ctx_ptr as *mut core::ffi::c_void,
+                );
+                println!("code is {:?}", err.code);
+            });
+            timed!(timing, "copy values to CPU", unsafe {
+                transmute::<&mut DeviceSlice<F>, &mut DeviceSlice<u64>>(
+                    &mut values_device[0..values_flatten_len],
                 )
-                }
-            );
-        timed!(
-            timing,
-            "copy values to CPU",
-            unsafe {
-                transmute::<&mut DeviceSlice<F>, &mut DeviceSlice<u64>>(&mut values_device[0..values_flatten_len]).async_copy_to(
+                .async_copy_to(
                     transmute::<&mut Vec<F>, &mut Vec<u64>>(&mut values_flatten),
-                    &ctx.inner.stream2
-                ).unwrap();
+                    &ctx.inner.stream,
+                )
+                .unwrap();
+            });
+
+            coeffs = values_flatten
+                .par_chunks(values_num_per_poly)
+                .map(|chunk| PolynomialCoeffs {
+                    coeffs: chunk.to_vec(),
+                })
+                .collect();
+
+            // timed!(timing, "Building MerkleTree + Transpose with GPU", unsafe {
+            //     plonky2_cuda::merkle_tree_from_coeffs(
+            //         values_device.as_mut_ptr() as *mut u64,
+            //         values_device.as_mut_ptr() as *mut u64,
+            //         poly_num as i32,
+            //         values_num_per_poly as i32,
+            //         lg_n as i32,
+            //         root_table_device.as_ptr() as *const u64,
+            //         root_table_device2.as_ptr() as *const u64,
+            //         shift_powers_device.as_ptr() as *const u64,
+            //         rate_bits as i32,
+            //         salt_size as i32,
+            //         cap_height as i32,
+            //         pad_extvalues_len as i32,
+            //         ctx_ptr as *mut core::ffi::c_void,
+            //     )
+            // });
+
+            // // log::info!("coeffs {:?}", coeffs);
+            // timed!(timing, "copy result", {
+            //     let mut alllen = ext_values_flatten_len;
+            //     assert!(ext_values_flatten.len() == ext_values_flatten_len);
+
+            //     alllen += pad_extvalues_len;
+
+            //     let len_with_f = digests_and_caps_buf_len * 4;
+            //     let fs =
+            //         unsafe { transmute::<&mut Vec<_>, &mut Vec<F>>(&mut digests_and_caps_buf) };
+            //     let leaves =
+            //         unsafe { transmute::<&mut Vec<_>, &mut Vec<F>>(&mut ext_values_flatten) };
+
+            //     unsafe {
+            //         fs.set_len(len_with_f);
+            //     }
+            //     println!(
+            //         "alllen: {}, digest_and_cap_buf_len: {}, diglen: {}",
+            //         alllen, len_with_f, digests_and_caps_buf_len
+            //     );
+            //     unsafe {
+            //         transmute::<&DeviceSlice<F>, &DeviceSlice<u64>>(
+            //             &values_device[alllen..alllen + len_with_f],
+            //         )
+            //         .async_copy_to(
+            //             transmute::<&mut Vec<F>, &mut Vec<u64>>(fs),
+            //             &ctx.inner.stream,
+            //         )
+            //         .unwrap();
+            //         ctx.inner.stream.synchronize().unwrap();
+            //     }
+
+            //     unsafe {
+            //         fs.set_len(len_with_f / 4);
+            //     }
+            //     unsafe {
+            //         transmute::<&DeviceSlice<F>, &DeviceSlice<u64>>(
+            //             &values_device[0..pad_extvalues_len],
+            //         )
+            //         .async_copy_to(
+            //             transmute::<&mut Vec<F>, &mut Vec<u64>>(leaves),
+            //             &ctx.inner.stream,
+            //         )
+            //         .unwrap();
+            //         ctx.inner.stream.synchronize().unwrap();
+            //     }
+            // });
+            // let my_leaves_dev_offset = 0 as isize;
+            // let merkle_tree = MerkleTree {
+            //     leaves: vec![],
+            //     digests: vec![],
+            //     cap: MerkleCap(digests_and_caps_buf[num_digests..num_digests_and_caps].to_vec()),
+            //     my_leaf_len: poly_num + salt_size,
+            //     my_leaves: ext_values_flatten.into(),
+            //     my_leaves_len: pad_extvalues_len,
+            //     my_leaves_dev_offset,
+            //     my_digests: digests_and_caps_buf.into(),
+            // };
+            Self {
+                polynomials: coeffs,
+                ..Self::default()
             }
-        );
-            timed!(
-                timing,
-                "Building MerkleTree + Transpose with GPU",
-                unsafe {
-                    plonky2_cuda::merkle_tree_from_coeffs(
-                        values_device.as_mut_ptr() as *mut u64,
-                        values_device.as_mut_ptr() as *mut u64,
-                        poly_num as i32, values_num_per_poly as i32,
-                        lg_n as i32,
-                        root_table_device.as_ptr() as *const u64,
-                        root_table_device2.as_ptr() as *const u64,
-                        shift_powers_device.as_ptr() as *const u64,
-                        rate_bits as i32,
-                        salt_size as i32,
-                        cap_height as i32,
-                        pad_extvalues_len as i32,
-                        ctx_ptr as *mut core::ffi::c_void,
-                    )
-                }
-            );
-
-            coeffs = timed!(
-                timing,
-                "unflat map",
-                values_flatten.chunks(values_num_per_poly).map(|values| PolynomialCoeffs::new(values.to_vec())).collect::<Vec<_>>()
-            );
-        // log::info!("coeffs {:?}", coeffs);
-            timed!(
-                timing,
-                "copy result",
-            {
-                let mut alllen = ext_values_flatten_len;
-                assert!(ext_values_flatten.len() == ext_values_flatten_len);
-
-                alllen += pad_extvalues_len;
-
-                let len_with_f = digests_and_caps_buf_len*4;
-                let fs= unsafe { transmute::<&mut Vec<_>, &mut Vec<F>>(&mut digests_and_caps_buf) };
-                let leaves= unsafe { transmute::<&mut Vec<_>, &mut Vec<F>>(&mut ext_values_flatten) };
-
-                unsafe {  fs.set_len(len_with_f);}
-                println!("alllen: {}, digest_and_cap_buf_len: {}, diglen: {}", alllen, len_with_f, digests_and_caps_buf_len);
-                unsafe {
-                    transmute::<&DeviceSlice<F>, &DeviceSlice<u64>>(&values_device[alllen..alllen+len_with_f]).async_copy_to(
-                        transmute::<&mut Vec<F>, &mut Vec<u64>>(fs),
-                        &ctx.inner.stream).unwrap();
-                    ctx.inner.stream.synchronize().unwrap();
-                }
-
-                unsafe {  fs.set_len(len_with_f / 4);}
-                unsafe {
-                    transmute::<&DeviceSlice<F>, &DeviceSlice<u64>>(&values_device[0..pad_extvalues_len]).async_copy_to(
-                        transmute::<&mut Vec<F>, &mut Vec<u64>>(leaves),
-                        &ctx.inner.stream).unwrap();
-                    ctx.inner.stream.synchronize().unwrap();
-                }
-            }
-
-            );
-            let my_leaves_dev_offset = ext_values_device_offset as isize;
-            let merkle_tree = MerkleTree {
-                leaves: vec![],
-                digests: vec![],
-                cap: MerkleCap(digests_and_caps_buf[num_digests..num_digests_and_caps].to_vec()),
-                my_leaf_len: poly_num+salt_size,
-                my_leaves: ext_values_flatten.into(),
-                my_leaves_len: pad_extvalues_len,
-                my_leaves_dev_offset,
-                my_digests: digests_and_caps_buf.into(),
-
-            };
-        Self {
-            polynomials: coeffs,
-            merkle_tree,
-            degree_log: lg_n,
-            rate_bits,
-            blinding,
-        }
         }
         // Self::from_coeffs(
         //     coeffs,
@@ -358,7 +355,8 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
             if self.merkle_tree.my_leaves.is_empty() {
                 self.merkle_tree.leaves[index].as_slice()
             } else {
-                &self.merkle_tree.my_leaves[index*self.merkle_tree.my_leaf_len .. (index+1)*self.merkle_tree.my_leaf_len]
+                &self.merkle_tree.my_leaves[index * self.merkle_tree.my_leaf_len
+                    ..(index + 1) * self.merkle_tree.my_leaf_len]
             }
         };
         &slice[..slice.len() - if self.blinding { SALT_SIZE } else { 0 }]
@@ -450,5 +448,121 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         );
 
         fri_proof
+    }
+}
+
+#[cfg(feature = "cuda")]
+#[cfg(test)]
+mod test {
+    use plonky2_field::extension::Extendable;
+    use plonky2_field::polynomial::PolynomialValues;
+    use plonky2_field::types::Sample;
+    use plonky2_util::log2_strict;
+    use rustacuda::context::{Context, ContextFlags};
+    use rustacuda::memory::DeviceBuffer;
+    use rustacuda::stream::{Stream, StreamFlags};
+    use rustacuda::CudaFlags;
+    use rustacuda_core::DeviceCopy;
+
+    use super::{CudaInvContext, PolynomialBatch};
+    use crate::fri::oracle::CudaInnerContext;
+    use crate::hash::hash_types::RichField;
+    use crate::plonk::config::{GenericConfig, PoseidonGoldilocksConfig};
+    use crate::util::timing::TimingTree;
+    const D: usize = 2;
+    type C = PoseidonGoldilocksConfig;
+    type F = <C as GenericConfig<D>>::F;
+    use plonky2_field::fft::fft_root_table;
+
+    fn cuda_ctx<F, const D: usize>(
+        values_num_per_poly: usize,
+        rate_bits: usize,
+    ) -> CudaInvContext<F, D>
+    where
+        F: RichField + Extendable<D> + DeviceCopy,
+    {
+        let ctx;
+        rustacuda::init(CudaFlags::empty()).unwrap();
+        let device_index = 0;
+        let device = rustacuda::prelude::Device::get_device(device_index).unwrap();
+        let _ctx =
+            Context::create_and_push(ContextFlags::MAP_HOST | ContextFlags::SCHED_AUTO, device)
+                .unwrap();
+        let stream = Stream::new(StreamFlags::NON_BLOCKING, None).unwrap();
+        let stream2 = Stream::new(StreamFlags::NON_BLOCKING, None).unwrap();
+
+        let lg_n = log2_strict(values_num_per_poly);
+        let fft_root_table_deg = fft_root_table(1 << lg_n).concat();
+        let fft_root_table_max = fft_root_table(1 << (lg_n + rate_bits)).concat();
+
+        let root_table_device = {
+            let root_table_device = DeviceBuffer::from_slice(&fft_root_table_deg).unwrap();
+            root_table_device
+        };
+        let root_table_device2 = {
+            let root_table_device = DeviceBuffer::from_slice(&fft_root_table_max).unwrap();
+            root_table_device
+        };
+        let shift_powers = F::coset_shift()
+            .powers()
+            .take(1 << (lg_n))
+            .collect::<Vec<F>>();
+        let shift_powers_device = {
+            let shift_powers_device = DeviceBuffer::from_slice(&shift_powers).unwrap();
+            shift_powers_device
+        };
+
+        ctx = CudaInvContext::<F, D> {
+            inner: CudaInnerContext { stream, stream2 },
+            root_table_device,
+            root_table_device2,
+            shift_powers_device,
+            ctx: _ctx,
+        };
+        return ctx;
+    }
+    #[test]
+    fn test_cuda_poly_batch() {
+        let values_num_per_poly = 1 << 6;
+        let poly_num = 8;
+        let mut polys = vec![];
+        for _i in 0..poly_num {
+            let poly: Vec<F> = (0..values_num_per_poly).map(|_| F::rand()).collect();
+            let poly_as_value = PolynomialValues::new(poly);
+            polys.push(poly_as_value);
+        }
+        let rate_bits = 3;
+        let cap_height = 4;
+        let len_cap = 1 << cap_height;
+        let all_len = poly_num * values_num_per_poly * (1 << rate_bits);
+        let num_digests = 2 * (values_num_per_poly * (1 << rate_bits) - len_cap);
+        let num_digests_and_caps = num_digests + len_cap;
+        println!("num digests and caps {num_digests_and_caps}");
+        println!("allen {all_len}");
+        let blinding = false;
+        let timing = &mut TimingTree::default();
+        let batch: PolynomialBatch<F, C, D> = PolynomialBatch::from_values(
+            polys.clone(),
+            rate_bits,
+            blinding,
+            cap_height,
+            timing,
+            None,
+        );
+        let ctx = &mut cuda_ctx::<F, D>(values_num_per_poly, rate_bits);
+        let cuda_batch: PolynomialBatch<F, C, D> = PolynomialBatch::from_values_cuda(
+            polys,
+            rate_bits,
+            blinding,
+            cap_height,
+            timing,
+            poly_num,
+            values_num_per_poly,
+            ctx,
+        );
+
+        println!("here 1{:?}", batch.polynomials[0]);
+        println!(" ");
+        println!("here 2{:?}", cuda_batch.polynomials[0]);
     }
 }
