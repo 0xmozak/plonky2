@@ -192,10 +192,12 @@ void init_lde_kernel(GoldilocksField* values_flatten, int poly_num, int values_n
 
     assert(thCnt > poly_num);
 
+    int pad_len = (1 << rate_bits) - 1;
+ 
     int values_num_per_poly2 = values_num_per_poly * (1<<rate_bits);
-    for (int i = gid; i < poly_num*values_num_per_poly*7; i += thCnt) {
-        unsigned idx = i % (values_num_per_poly*7);
-        unsigned poly_idx = i / (values_num_per_poly*7);
+    for (int i = gid; i < poly_num*values_num_per_poly*pad_len; i += thCnt) {
+        unsigned idx = i % (values_num_per_poly*pad_len);
+        unsigned poly_idx = i / (values_num_per_poly*pad_len);
 
         GoldilocksField* values = values_flatten + poly_idx*values_num_per_poly2 + values_num_per_poly;
         values[idx].data = 0;
