@@ -93,9 +93,10 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
 
     /// Outputs the maximum quotient polynomial's degree factor of this [`Stark`].
     fn quotient_degree_factor(&self) -> usize {
-        match self.constraint_degree().checked_sub(1) {
-            Some(v) => 1.max(v),
-            None => 0,
+        match self.constraint_degree() {
+            0 => 0,
+            1 => 1,
+            n => n - 1,
         }
     }
 
