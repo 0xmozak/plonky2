@@ -4,6 +4,7 @@
 //! NOTE: This and related work like Poseidon2Gate and benchmarks are based on OlaVM's work
 //! at https://github.com/Sin7Y/olavm/blob/main/plonky2/plonky2/src/hash/poseidon2.rs
 //!
+#[cfg(not(feature = "std"))]
 use alloc::vec;
 use core::fmt::Debug;
 
@@ -609,11 +610,12 @@ impl<F: RichField> AlgebraicHasher<F> for Poseidon2Hash {
 
 #[cfg(test)]
 pub(crate) mod test_helpers {
-    use plonky2_field::types::Field;
+    #[cfg(not(feature = "std"))]
+    use alloc::vec::Vec;
 
     use crate::hash::poseidon2::{Poseidon2, WIDTH};
 
-    pub(crate) fn check_test_vectors<F: Field>(test_vectors: Vec<([u64; WIDTH], [u64; WIDTH])>)
+    pub(crate) fn check_test_vectors<F>(test_vectors: Vec<([u64; WIDTH], [u64; WIDTH])>)
     where
         F: Poseidon2,
     {
