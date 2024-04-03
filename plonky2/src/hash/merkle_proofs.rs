@@ -105,6 +105,44 @@ pub fn verify_batch_merkle_proof_to_cap<F: RichField, H: Hasher<F>>(
     Ok(())
 }
 
+/// Verifies that the given leaf data is present at the given index in the Field Merkle tree with the
+/// given cap.
+pub fn verify_field_merkle_proof_to_cap<F: RichField, H: Hasher<F>>(
+    leaf_data: Vec<Vec<F>>,
+    leaf_heights: Vec<usize>,
+    mut leaf_index: usize,
+    merkle_cap: &MerkleCap<F, H>,
+    proof: &MerkleProof<F, H>,
+) -> Result<()> {
+    assert_eq!(leaf_data.len(), leaf_heights.len());
+    let mut current_digest = H::hash_or_noop(&leaf_data[0]);
+    let mut current_height = leaf_heights[0];
+    let mut leaf_data_index = 1;
+    for &sibling_digest in proof.siblings.iter() {
+        if leaf_data_index < leaf_heights.len() && current_height == leaf_heights[leaf_data_index] {
+            let mut new_leaves = current_digest.to_vec();
+            new_leaves.extend_from_slice(&leaf_data[leaf_data_index]);
+            current_digest = H::hash_or_noop(&new_leaves);
+            leaf_data_index += 1;
+        }
+
+        let bit = leaf_index & 1;
+        leaf_index >>= 1;
+        current_digest = if bit == 1 {
+            H::two_to_one(sibling_digest, current_digest)
+        } else {
+            H::two_to_one(current_digest, sibling_digest)
+        };
+        current_height -= 1;
+    }
+    ensure!(
+        current_digest == merkle_cap.0[leaf_index],
+        "Invalid Merkle proof."
+    );
+
+    Ok(())
+}
+
 impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
     /// Verifies that the given leaf data is present at the given index in the Merkle tree with the
     /// given root. The index is given by its little-endian bits.
