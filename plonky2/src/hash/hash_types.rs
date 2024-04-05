@@ -19,7 +19,7 @@ impl RichField for GoldilocksField {}
 pub const NUM_HASH_OUT_ELTS: usize = 4;
 
 /// Represents a ~256 bit hash output.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq, Hash, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct HashOut<F: Field> {
     pub elements: [F; NUM_HASH_OUT_ELTS],
@@ -104,12 +104,6 @@ impl<F: RichField> GenericHashOut<F> for HashOut<F> {
 
     fn to_vec(&self) -> Vec<F> {
         self.elements.to_vec()
-    }
-}
-
-impl<F: Field> Default for HashOut<F> {
-    fn default() -> Self {
-        Self::ZERO
     }
 }
 
