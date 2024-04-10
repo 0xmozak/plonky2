@@ -20,6 +20,8 @@ use crate::iop::target::{BoolTarget, Target};
 use crate::plonk::circuit_builder::CircuitBuilder;
 use crate::plonk::config::{AlgebraicHasher, Hasher};
 
+use super::hashing::hash_n_to_hash_no_pad_iter;
+
 pub const SPONGE_RATE: usize = 8;
 pub const SPONGE_CAPACITY: usize = 4;
 pub const SPONGE_WIDTH: usize = SPONGE_RATE + SPONGE_CAPACITY;
@@ -867,6 +869,12 @@ impl<T: Copy + Debug + Default + Eq + Permuter + Send + Sync> PlonkyPermutation<
     fn squeeze(&self) -> &[T] {
         &self.state[..Self::RATE]
     }
+
+    fn squeeze_iter(self) -> impl IntoIterator<Item=T>+Copy {
+        let mut vals = [T::default(); SPONGE_RATE];
+        vals.copy_from_slice(self.squeeze());
+        vals
+    }
 }
 
 /// Poseidon hash function.
@@ -879,6 +887,10 @@ impl<F: RichField> Hasher<F> for PoseidonHash {
 
     fn hash_no_pad(input: &[F]) -> Self::Hash {
         hash_n_to_hash_no_pad::<F, Self::Permutation>(input)
+    }
+
+    fn hash_no_pad_iter<I: IntoIterator<Item = F>>(input: I) -> Self::Hash {
+        hash_n_to_hash_no_pad_iter::<F, Self::Permutation, I>(input)
     }
 
     fn two_to_one(left: Self::Hash, right: Self::Hash) -> Self::Hash {

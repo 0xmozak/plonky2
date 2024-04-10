@@ -91,6 +91,9 @@ pub trait PlonkyPermutation<T: Copy + Default>:
 
     /// Return a slice of `RATE` elements
     fn squeeze(&self) -> &[T];
+
+    /// Return an array of `RATE` elements
+    fn squeeze_iter(self) -> impl IntoIterator<Item=T>+Copy;
 }
 
 /// A one-way compression function which takes two ~256 bit inputs and returns a ~256 bit output.
@@ -140,6 +143,36 @@ pub fn hash_n_to_m_no_pad<F: RichField, P: PlonkyPermutation<F>>(
     }
 }
 
+/// Hash a message without any padding step. Note that this can enable length-extension attacks.
+/// However, it is still collision-resistant in cases where the input has a fixed length.
+pub fn hash_n_to_m_no_pad_iter<F: RichField, P: PlonkyPermutation<F>, I: IntoIterator<Item = F>>(
+    inputs: I,
+) -> impl Iterator<Item = F> {
+    let mut perm = P::new(core::iter::repeat(F::ZERO));
+
+    // Absorb all input chunks.
+    let mut inputs = inputs.into_iter().peekable();
+    while inputs.peek().is_some() {
+        let input_chunk = inputs.by_ref().take(P::RATE);
+        perm.set_from_iter(input_chunk, 0);
+        perm.permute();
+    }
+
+    let mut first = true;
+    core::iter::repeat_with(move || {
+        if !first {
+            perm.permute()
+        }
+        first = false;
+        perm.squeeze_iter()
+    }).flatten()
+}
+
 pub fn hash_n_to_hash_no_pad<F: RichField, P: PlonkyPermutation<F>>(inputs: &[F]) -> HashOut<F> {
     HashOut::from_vec(hash_n_to_m_no_pad::<F, P>(inputs, NUM_HASH_OUT_ELTS))
+}
+
+pub fn hash_n_to_hash_no_pad_iter<F: RichField, P: PlonkyPermutation<F>, I: IntoIterator<Item = F>>(inputs: I) -> HashOut<F> {
+    let mut elements = hash_n_to_m_no_pad_iter::<F, P, I>(inputs);
+    HashOut{ elements: std::array::from_fn(|_| elements.next().unwrap()) }
 }

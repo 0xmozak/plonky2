@@ -8,6 +8,7 @@
 
 #[cfg(not(feature = "std"))]
 use alloc::{vec, vec::Vec};
+use itertools::chain;
 use core::fmt::Debug;
 
 use serde::de::DeserializeOwned;
@@ -30,6 +31,7 @@ pub trait GenericHashOut<F: RichField>:
     fn to_bytes(&self) -> Vec<u8>;
     fn from_bytes(bytes: &[u8]) -> Self;
 
+    fn into_iter(&self) -> impl Iterator<Item = F>;
     fn to_vec(&self) -> Vec<F>;
 }
 
@@ -46,10 +48,21 @@ pub trait Hasher<F: RichField>: Sized + Copy + Debug + Eq + PartialEq {
 
     /// Hash a message without any padding step. Note that this can enable length-extension attacks.
     /// However, it is still collision-resistant in cases where the input has a fixed length.
-    fn hash_no_pad(input: &[F]) -> Self::Hash;
+    fn hash_no_pad(input: &[F]) -> Self::Hash {
+        Self::hash_no_pad_iter(input.into_iter().cloned())
+    }
+
+    /// Hash a message without any padding step. Note that this can enable length-extension attacks.
+    /// However, it is still collision-resistant in cases where the input has a fixed length.
+    fn hash_no_pad_iter<I: IntoIterator<Item = F>>(input: I) -> Self::Hash;
 
     /// Pad the message using the `pad10*1` rule, then hash it.
     fn hash_pad(input: &[F]) -> Self::Hash {
+        let len
+        chain!(input.into_iter().cloned(),
+            [F::One],
+            0..((padded_input.len() + 1) % Self::Permutation::RATE)
+        )
         let mut padded_input = input.to_vec();
         padded_input.push(F::ONE);
         while (padded_input.len() + 1) % Self::Permutation::RATE != 0 {
@@ -74,7 +87,9 @@ pub trait Hasher<F: RichField>: Sized + Copy + Debug + Eq + PartialEq {
         }
     }
 
-    fn two_to_one(left: Self::Hash, right: Self::Hash) -> Self::Hash;
+    fn two_to_one(left: Self::Hash, right: Self::Hash) -> Self::Hash {
+        Self::hash_no_pad_iter(chain(left.into_iter(), right.into_iter()))
+    }
 }
 
 /// Trait for algebraic hash functions, built from a permutation using the sponge construction.

@@ -8,10 +8,9 @@ use alloc::{
 use core::usize;
 
 use itertools::Itertools;
-use keccak_hash::keccak;
 
 use super::lookup_table::LookupTable;
-use crate::field::extension::Extendable;
+use crate::{field::extension::Extendable, hash::keccak::keccak};
 use crate::field::packed::PackedField;
 use crate::gates::gate::Gate;
 use crate::gates::packed_util::PackedEvaluableBase;

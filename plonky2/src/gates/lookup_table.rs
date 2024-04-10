@@ -11,10 +11,9 @@ use core::usize;
 use std::sync::Arc;
 
 use itertools::Itertools;
-use keccak_hash::keccak;
 use plonky2_util::ceil_div_usize;
 
-use crate::field::extension::Extendable;
+use crate::{field::extension::Extendable, hash::keccak::keccak};
 use crate::field::packed::PackedField;
 use crate::gates::gate::Gate;
 use crate::gates::packed_util::PackedEvaluableBase;

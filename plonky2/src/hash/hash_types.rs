@@ -102,6 +102,10 @@ impl<F: RichField> GenericHashOut<F> for HashOut<F> {
         }
     }
 
+    fn into_iter(&self) -> impl Iterator<Item = F> {
+        self.elements.into_iter()
+    }
+
     fn to_vec(&self) -> Vec<F> {
         self.elements.to_vec()
     }
@@ -180,7 +184,7 @@ impl<F: RichField, const N: usize> GenericHashOut<F> for BytesHash<N> {
         Self(bytes.try_into().unwrap())
     }
 
-    fn to_vec(&self) -> Vec<F> {
+    fn into_iter(&self) -> impl Iterator<Item = F> {
         self.0
             // Chunks of 7 bytes since 8 bytes would allow collisions.
             .chunks(7)
@@ -189,7 +193,10 @@ impl<F: RichField, const N: usize> GenericHashOut<F> for BytesHash<N> {
                 arr[..bytes.len()].copy_from_slice(bytes);
                 F::from_canonical_u64(u64::from_le_bytes(arr))
             })
-            .collect()
+    }
+
+    fn to_vec(&self) -> Vec<F> {
+        self.into_iter().collect()
     }
 }
 
