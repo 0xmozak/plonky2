@@ -83,6 +83,17 @@ pub trait Hasher<F: RichField>: Sized + Copy + Debug + Eq + PartialEq {
             Self::hash_no_pad(inputs)
         }
     }
+    
+    /// Hash the slice if necessary to reduce its length to ~256 bits. If it already fits, this is a
+    /// no-op.
+    fn hash_or_noop_iter<I: IntoIterator<Item = F>>(inputs: I) -> Self::Hash {
+        let inputs = inputs.into_iter();
+        if inputs.size_hint().0 * 8 <= Self::HASH_SIZE {
+            Self::Hash::from_iter(inputs.chain(repeat(F::ZERO)))
+        } else {
+            Self::hash_no_pad_iter(inputs)
+        }
+    }
 
     fn two_to_one(left: Self::Hash, right: Self::Hash) -> Self::Hash {
         Self::hash_no_pad_iter(chain(left.into_iter(), right.into_iter()))
