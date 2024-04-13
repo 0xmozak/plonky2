@@ -93,7 +93,7 @@ pub trait PlonkyPermutation<T: Copy + Default>:
     fn squeeze(&self) -> &[T];
 
     /// Return an array of `RATE` elements
-    fn squeeze_iter(self) -> impl IntoIterator<Item=T>+Copy;
+    fn squeeze_iter(self) -> impl IntoIterator<Item = T> + Copy;
 }
 
 /// A one-way compression function which takes two ~256 bit inputs and returns a ~256 bit output.
@@ -165,14 +165,23 @@ pub fn hash_n_to_m_no_pad_iter<F: RichField, P: PlonkyPermutation<F>, I: IntoIte
         }
         first = false;
         perm.squeeze_iter()
-    }).flatten()
+    })
+    .flatten()
 }
 
 pub fn hash_n_to_hash_no_pad<F: RichField, P: PlonkyPermutation<F>>(inputs: &[F]) -> HashOut<F> {
     HashOut::from_vec(hash_n_to_m_no_pad::<F, P>(inputs, NUM_HASH_OUT_ELTS))
 }
 
-pub fn hash_n_to_hash_no_pad_iter<F: RichField, P: PlonkyPermutation<F>, I: IntoIterator<Item = F>>(inputs: I) -> HashOut<F> {
+pub fn hash_n_to_hash_no_pad_iter<
+    F: RichField,
+    P: PlonkyPermutation<F>,
+    I: IntoIterator<Item = F>,
+>(
+    inputs: I,
+) -> HashOut<F> {
     let mut elements = hash_n_to_m_no_pad_iter::<F, P, I>(inputs);
-    HashOut{ elements: std::array::from_fn(|_| elements.next().unwrap()) }
+    HashOut {
+        elements: std::array::from_fn(|_| elements.next().unwrap()),
+    }
 }

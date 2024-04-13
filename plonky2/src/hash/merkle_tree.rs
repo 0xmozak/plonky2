@@ -37,8 +37,8 @@ impl<F: RichField, H: Hasher<F>> MerkleCap<F, H> {
         log2_strict(self.len())
     }
 
-    pub fn flatten(&self) -> Vec<F> {
-        self.0.iter().flat_map(|&h| h.to_vec()).collect()
+    pub fn flatten(&self) -> impl Iterator<Item = F> + '_ {
+        self.0.iter().flat_map(|h| h.into_iter())
     }
 }
 

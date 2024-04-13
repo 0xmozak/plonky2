@@ -13,12 +13,13 @@ use std::sync::Arc;
 use itertools::Itertools;
 use plonky2_util::ceil_div_usize;
 
-use crate::{field::extension::Extendable, hash::keccak::keccak};
+use crate::field::extension::Extendable;
 use crate::field::packed::PackedField;
 use crate::gates::gate::Gate;
 use crate::gates::packed_util::PackedEvaluableBase;
 use crate::gates::util::StridedConstraintConsumer;
 use crate::hash::hash_types::RichField;
+use crate::hash::keccak::keccak;
 use crate::iop::ext_target::ExtensionTarget;
 use crate::iop::generator::{GeneratedValues, SimpleGenerator, WitnessGeneratorRef};
 use crate::iop::target::Target;

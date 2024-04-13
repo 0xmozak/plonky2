@@ -12,6 +12,7 @@ use plonky2_field::extension::{Extendable, FieldExtension};
 use plonky2_field::types::{Field, PrimeField64};
 use unroll::unroll_for_loops;
 
+use super::hashing::hash_n_to_hash_no_pad_iter;
 use crate::gates::poseidon2::Poseidon2Gate;
 use crate::hash::hash_types::{HashOut, RichField};
 use crate::hash::hashing::{compress, hash_n_to_hash_no_pad, PlonkyPermutation};
@@ -19,8 +20,6 @@ use crate::iop::ext_target::ExtensionTarget;
 use crate::iop::target::{BoolTarget, Target};
 use crate::plonk::circuit_builder::CircuitBuilder;
 use crate::plonk::config::{AlgebraicHasher, Hasher};
-
-use super::hashing::hash_n_to_hash_no_pad_iter;
 
 // The number offull rounds and partial rounds is given by the
 // calc_round_numbers.py script. They happen to be the same for both
@@ -560,7 +559,7 @@ impl<T: Copy + Debug + Default + Eq + Permuter + Send + Sync> PlonkyPermutation<
         &self.state[..Self::RATE]
     }
 
-    fn squeeze_iter(self) -> impl IntoIterator<Item=T>+Copy {
+    fn squeeze_iter(self) -> impl IntoIterator<Item = T> + Copy {
         let mut vals = [T::default(); RATE];
         vals.copy_from_slice(self.squeeze());
         vals

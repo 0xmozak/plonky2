@@ -61,23 +61,28 @@ impl<F: RichField> PlonkyPermutation<F> for KeccakPermutation<F> {
     }
 
     fn permute(&mut self) {
-        let mut state_bytes = vec![0u8; SPONGE_WIDTH * size_of::<u64>()];
-        for i in 0..SPONGE_WIDTH {
+        let mut state_bytes = [0u8; SPONGE_WIDTH * size_of::<u64>()];
+        for (i, x) in self.state.iter().enumerate() {
             state_bytes[i * size_of::<u64>()..(i + 1) * size_of::<u64>()]
-                .copy_from_slice(&self.state[i].to_canonical_u64().to_le_bytes());
+                .copy_from_slice(&x.to_canonical_u64().to_le_bytes());
         }
 
-        let hash_onion = core::iter::repeat_with(|| {
-            let output = keccak(state_bytes.clone()).0;
-            state_bytes = output.to_vec();
-            output
+        let hash_onion = (0..).scan(keccak(&state_bytes), |state, _| {
+            let output = state.0;
+            *state = keccak(&output);
+            Some(output)
         });
 
         let hash_onion_u64s = hash_onion.flat_map(|output| {
-            output
-                .chunks_exact(size_of::<u64>())
-                .map(|word| u64::from_le_bytes(word.try_into().unwrap()))
-                .collect_vec()
+            const STRIDE: usize = size_of::<u64>();
+            
+            (0..(32/STRIDE)).map(move |i| {
+                let mut arr = [0; 8];
+                let i = i*STRIDE;
+                let bytes = &output[i..(i+STRIDE)];
+                arr[..bytes.len()].copy_from_slice(bytes);
+                u64::from_le_bytes(arr)
+            })
         });
 
         // Parse field elements from u64 stream, using rejection sampling such that words that don't
@@ -97,7 +102,7 @@ impl<F: RichField> PlonkyPermutation<F> for KeccakPermutation<F> {
         &self.state[..Self::RATE]
     }
 
-    fn squeeze_iter(self) -> impl IntoIterator<Item=F>+Copy {
+    fn squeeze_iter(self) -> impl IntoIterator<Item = F> + Copy {
         let mut vals = [F::default(); SPONGE_RATE];
         vals.copy_from_slice(self.squeeze());
         vals
@@ -134,7 +139,7 @@ impl<F: RichField, const N: usize> Hasher<F> for KeccakHash<N> {
 
         let mut hash_bytes = [0u8; 32];
         keccak256.finalize(&mut hash_bytes);
-        
+
         let mut arr = [0; N];
         arr.copy_from_slice(&hash_bytes[..N]);
         BytesHash(arr)

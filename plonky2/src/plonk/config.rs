@@ -6,11 +6,11 @@
 //! the Poseidon hash function both internally and natively, and one
 //! mixing Poseidon internally and truncated Keccak externally.
 
-#[cfg(not(feature = "std"))]
-use alloc::{vec, vec::Vec};
-use itertools::chain;
+use core::borrow::{Borrow, BorrowMut};
 use core::fmt::Debug;
+use core::iter::repeat;
 
+use itertools::chain;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
@@ -28,11 +28,17 @@ use crate::plonk::circuit_builder::CircuitBuilder;
 pub trait GenericHashOut<F: RichField>:
     Copy + Clone + Debug + Eq + PartialEq + Send + Sync + Serialize + DeserializeOwned
 {
-    fn to_bytes(&self) -> Vec<u8>;
+    fn to_bytes(self) -> impl AsRef<[u8]>+AsMut<[u8]>+Borrow<[u8]>+BorrowMut<[u8]>+Copy;
     fn from_bytes(bytes: &[u8]) -> Self;
+    fn from_byte_iter(bytes: impl Iterator<Item = u8>) -> Self;
+    fn from_vals(inputs: &[F]) -> Self {
+        Self::from_iter(inputs.into_iter().copied())
+    }
+    fn from_iter(inputs: impl Iterator<Item = F>) -> Self {
+        Self::from_byte_iter(inputs.flat_map(|x| x.to_canonical_u64().to_le_bytes()))
+    }
 
-    fn into_iter(&self) -> impl Iterator<Item = F>;
-    fn to_vec(&self) -> Vec<F>;
+    fn into_iter(self) -> impl Iterator<Item = F>;
 }
 
 /// Trait for hash functions.
@@ -49,7 +55,7 @@ pub trait Hasher<F: RichField>: Sized + Copy + Debug + Eq + PartialEq {
     /// Hash a message without any padding step. Note that this can enable length-extension attacks.
     /// However, it is still collision-resistant in cases where the input has a fixed length.
     fn hash_no_pad(input: &[F]) -> Self::Hash {
-        Self::hash_no_pad_iter(input.into_iter().cloned())
+        Self::hash_no_pad_iter(input.into_iter().copied())
     }
 
     /// Hash a message without any padding step. Note that this can enable length-extension attacks.
@@ -58,30 +64,21 @@ pub trait Hasher<F: RichField>: Sized + Copy + Debug + Eq + PartialEq {
 
     /// Pad the message using the `pad10*1` rule, then hash it.
     fn hash_pad(input: &[F]) -> Self::Hash {
-        let len
-        chain!(input.into_iter().cloned(),
-            [F::One],
-            0..((padded_input.len() + 1) % Self::Permutation::RATE)
-        )
-        let mut padded_input = input.to_vec();
-        padded_input.push(F::ONE);
-        while (padded_input.len() + 1) % Self::Permutation::RATE != 0 {
-            padded_input.push(F::ZERO);
-        }
-        padded_input.push(F::ONE);
-        Self::hash_no_pad(&padded_input)
+        let zero_padding = (input.len() + 2) % Self::Permutation::RATE;
+        let padded_input = chain!(
+            input.into_iter().copied(),
+            [F::ONE],
+            (0..zero_padding).map(|_| F::ZERO),
+            [F::ONE],
+        );
+        Self::hash_no_pad_iter(padded_input)
     }
 
     /// Hash the slice if necessary to reduce its length to ~256 bits. If it already fits, this is a
     /// no-op.
     fn hash_or_noop(inputs: &[F]) -> Self::Hash {
         if inputs.len() * 8 <= Self::HASH_SIZE {
-            let mut inputs_bytes = vec![0u8; Self::HASH_SIZE];
-            for i in 0..inputs.len() {
-                inputs_bytes[i * 8..(i + 1) * 8]
-                    .copy_from_slice(&inputs[i].to_canonical_u64().to_le_bytes());
-            }
-            Self::Hash::from_bytes(&inputs_bytes)
+            Self::Hash::from_iter(inputs.iter().copied().chain(repeat(F::ZERO)))
         } else {
             Self::hash_no_pad(inputs)
         }

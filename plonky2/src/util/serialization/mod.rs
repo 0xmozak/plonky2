@@ -1361,7 +1361,7 @@ pub trait Write {
         F: RichField,
         H: Hasher<F>,
     {
-        self.write_all(&h.to_bytes())
+        self.write_all(h.to_bytes().as_ref())
     }
 
     /// Writes a HashOutTarget `h` to `self`.

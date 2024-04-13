@@ -1,3 +1,5 @@
+use core::borrow::{Borrow, BorrowMut};
+
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
@@ -83,31 +85,42 @@ where
 }
 
 impl<F: RichField> GenericHashOut<F> for HashOut<F> {
-    fn to_bytes(&self) -> Vec<u8> {
-        self.elements
-            .into_iter()
-            .flat_map(|x| x.to_canonical_u64().to_le_bytes())
-            .collect()
+    fn to_bytes(self) -> impl AsRef<[u8]>+AsMut<[u8]>+Borrow<[u8]>+BorrowMut<[u8]>+Copy {
+        let mut bytes = [0u8; NUM_HASH_OUT_ELTS*8];
+        for (i, x) in self.elements.into_iter().enumerate() {
+            let i = i*8;
+            bytes[i..i+8].copy_from_slice(&x.to_canonical_u64().to_le_bytes())
+        }
+        bytes
     }
 
     fn from_bytes(bytes: &[u8]) -> Self {
+        let mut bytes = bytes
+            .chunks(8)
+            .take(NUM_HASH_OUT_ELTS)
+            .map(|x| F::from_canonical_u64(u64::from_le_bytes(x.try_into().unwrap())));
         HashOut {
-            elements: bytes
-                .chunks(8)
-                .take(NUM_HASH_OUT_ELTS)
-                .map(|x| F::from_canonical_u64(u64::from_le_bytes(x.try_into().unwrap())))
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap(),
+            elements: [(); NUM_HASH_OUT_ELTS].map(|()| bytes.next().unwrap()),
         }
     }
 
-    fn into_iter(&self) -> impl Iterator<Item = F> {
-        self.elements.into_iter()
+    fn from_byte_iter(mut bytes: impl Iterator<Item = u8>) -> Self {
+        let bytes = [[(); 8]; NUM_HASH_OUT_ELTS].map(|b| b.map(|()| bytes.next().unwrap()));
+
+        HashOut {
+            elements: bytes
+                .map(|x| F::from_canonical_u64(u64::from_le_bytes(x.try_into().unwrap()))),
+        }
     }
 
-    fn to_vec(&self) -> Vec<F> {
-        self.elements.to_vec()
+    fn from_iter(mut inputs: impl Iterator<Item = F>) -> Self {
+        HashOut {
+            elements: [(); NUM_HASH_OUT_ELTS].map(|()| inputs.next().unwrap()),
+        }
+    }
+
+    fn into_iter(self) -> impl Iterator<Item = F> {
+        self.elements.into_iter()
     }
 }
 
@@ -176,27 +189,29 @@ impl<const N: usize> Sample for BytesHash<N> {
 }
 
 impl<F: RichField, const N: usize> GenericHashOut<F> for BytesHash<N> {
-    fn to_bytes(&self) -> Vec<u8> {
-        self.0.to_vec()
+    fn to_bytes(self) -> impl AsRef<[u8]>+AsMut<[u8]>+Borrow<[u8]>+BorrowMut<[u8]>+Copy {
+        self.0
     }
 
     fn from_bytes(bytes: &[u8]) -> Self {
         Self(bytes.try_into().unwrap())
     }
 
-    fn into_iter(&self) -> impl Iterator<Item = F> {
-        self.0
-            // Chunks of 7 bytes since 8 bytes would allow collisions.
-            .chunks(7)
-            .map(|bytes| {
-                let mut arr = [0; 8];
-                arr[..bytes.len()].copy_from_slice(bytes);
-                F::from_canonical_u64(u64::from_le_bytes(arr))
-            })
+    fn from_byte_iter(mut bytes: impl Iterator<Item = u8>) -> Self {
+        Self([(); N].map(|()| bytes.next().unwrap()))
     }
 
-    fn to_vec(&self) -> Vec<F> {
-        self.into_iter().collect()
+    fn into_iter(self) -> impl Iterator<Item = F> {
+        // Chunks of 7 bytes since 8 bytes would allow collisions.
+        const STRIDE: usize = 7;
+        
+        (0..((N+STRIDE-1)/STRIDE)).map(move |i| {
+            let mut arr = [0; 8];
+            let i = i*STRIDE;
+            let bytes = &self.0[i..std::cmp::min(i+STRIDE, N)];
+            arr[..bytes.len()].copy_from_slice(bytes);
+            F::from_canonical_u64(u64::from_le_bytes(arr))
+        })
     }
 }
 
