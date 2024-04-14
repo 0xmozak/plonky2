@@ -182,6 +182,6 @@ pub fn hash_n_to_hash_no_pad_iter<
 ) -> HashOut<F> {
     let mut elements = hash_n_to_m_no_pad_iter::<F, P, I>(inputs);
     HashOut {
-        elements: std::array::from_fn(|_| elements.next().unwrap()),
+        elements: core::array::from_fn(|_| elements.next().unwrap()),
     }
 }

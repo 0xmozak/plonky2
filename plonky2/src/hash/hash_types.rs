@@ -1,6 +1,7 @@
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use core::borrow::BorrowMut;
+use core::cmp;
 
 use anyhow::ensure;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -206,7 +207,7 @@ impl<F: RichField, const N: usize> GenericHashOut<F> for BytesHash<N> {
         (0..((N + STRIDE - 1) / STRIDE)).map(move |i| {
             let mut arr = [0; 8];
             let i = i * STRIDE;
-            let bytes = &self.0[i..std::cmp::min(i + STRIDE, N)];
+            let bytes = &self.0[i..cmp::min(i + STRIDE, N)];
             arr[..bytes.len()].copy_from_slice(bytes);
             F::from_canonical_u64(u64::from_le_bytes(arr))
         })

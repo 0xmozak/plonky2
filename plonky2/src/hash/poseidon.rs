@@ -2,7 +2,7 @@
 //! <https://eprint.iacr.org/2019/458.pdf>
 
 #[cfg(not(feature = "std"))]
-use alloc::{vec, vec::Vec};
+use alloc::vec;
 use core::fmt::Debug;
 
 use plonky2_field::packed::PackedField;
@@ -931,6 +931,8 @@ impl<F: RichField> AlgebraicHasher<F> for PoseidonHash {
 
 #[cfg(test)]
 pub(crate) mod test_helpers {
+    #[cfg(not(feature = "std"))]
+    use alloc::vec::Vec;
     use super::*;
 
     pub(crate) fn check_test_vectors<F>(
