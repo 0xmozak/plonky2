@@ -933,6 +933,7 @@ impl<F: RichField> AlgebraicHasher<F> for PoseidonHash {
 pub(crate) mod test_helpers {
     #[cfg(not(feature = "std"))]
     use alloc::vec::Vec;
+
     use super::*;
 
     pub(crate) fn check_test_vectors<F>(
