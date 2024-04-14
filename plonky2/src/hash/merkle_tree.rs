@@ -170,19 +170,21 @@ pub(crate) fn fill_digests_buf_custom<F, H, L, HF>(
     let leaves_chunks = leaves.par_chunks_exact(subtree_leaves_len);
     assert_eq!(digests_chunks.len(), cap_buf.len());
     assert_eq!(digests_chunks.len(), leaves_chunks.len());
-    digests_chunks.zip(cap_buf).zip(leaves_chunks).for_each(
-        |((subtree_digests, subtree_cap), subtree_leaves)| {
+    digests_chunks
+        .zip(cap_buf)
+        .zip(leaves_chunks)
+        .enumerate()
+        .for_each(|(i, ((subtree_digests, subtree_cap), subtree_leaves))| {
             // We have `1 << cap_height` sub-trees, one for each entry in `cap`. They are totally
             // independent, so we schedule one task for each. `digests_buf` and `leaves` are split
             // into `1 << cap_height` slices, one for each sub-tree.
             subtree_cap.write(fill_subtree::<F, H, L, HF>(
-                0,
+                i * subtree_leaves_len,
                 subtree_digests,
                 subtree_leaves,
                 hash_fn.clone(),
             ));
-        },
-    );
+        });
 }
 
 pub fn merkle_tree_prove<F: RichField, H: Hasher<F>>(

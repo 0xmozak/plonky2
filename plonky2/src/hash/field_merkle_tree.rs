@@ -92,7 +92,7 @@ impl<F: RichField, H: Hasher<F>> FieldMerkleTree<F, H> {
                     &new_leaves[..],
                     next_cap_height,
                     |i, cap_hash| {
-                        H::hash_or_noop_iter(chain!(cap_hash.into_iter(), cur[i].iter().copied(),))
+                        H::hash_or_noop_iter(chain!(cap_hash.into_iter(), cur[i].iter().copied()))
                     },
                 );
             }
