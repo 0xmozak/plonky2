@@ -2,9 +2,9 @@ mod allocator;
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use plonky2::field::goldilocks_field::GoldilocksField;
+use plonky2::hash::field_merkle_tree::FieldMerkleTree;
 use plonky2::hash::hash_types::RichField;
 use plonky2::hash::keccak::KeccakHash;
-use plonky2::hash::field_merkle_tree::FieldMerkleTree;
 use plonky2::hash::poseidon::PoseidonHash;
 use plonky2::plonk::config::Hasher;
 use tynm::type_name;
@@ -26,8 +26,8 @@ pub(crate) fn bench_field_merkle_tree<F: RichField, H: Hasher<F>>(c: &mut Criter
         group.bench_with_input(BenchmarkId::from_parameter(size), &size, |b, _| {
             let leaves = vec![
                 vec![F::rand_vec(ELEMS_PER_LEAF_1); size],
-                vec![F::rand_vec(ELEMS_PER_LEAF_2); size>>1],
-                vec![F::rand_vec(ELEMS_PER_LEAF_3); size>>2],
+                vec![F::rand_vec(ELEMS_PER_LEAF_2); size >> 1],
+                vec![F::rand_vec(ELEMS_PER_LEAF_3); size >> 2],
             ];
             b.iter(|| FieldMerkleTree::<F, H>::new(black_box(leaves.clone()), black_box(5)));
         });

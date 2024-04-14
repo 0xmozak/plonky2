@@ -6,7 +6,7 @@
 //! the Poseidon hash function both internally and natively, and one
 //! mixing Poseidon internally and truncated Keccak externally.
 
-use core::borrow::{Borrow, BorrowMut};
+use core::borrow::BorrowMut;
 use core::fmt::Debug;
 use core::iter::repeat;
 
@@ -28,11 +28,11 @@ use crate::plonk::circuit_builder::CircuitBuilder;
 pub trait GenericHashOut<F: RichField>:
     Copy + Clone + Debug + Eq + PartialEq + Send + Sync + Serialize + DeserializeOwned
 {
-    fn to_bytes(self) -> impl AsRef<[u8]>+AsMut<[u8]>+Borrow<[u8]>+BorrowMut<[u8]>+Copy;
+    fn to_bytes(self) -> impl AsRef<[u8]> + AsMut<[u8]> + BorrowMut<[u8]> + Copy;
     fn from_bytes(bytes: &[u8]) -> Self;
     fn from_byte_iter(bytes: impl Iterator<Item = u8>) -> Self;
     fn from_vals(inputs: &[F]) -> Self {
-        Self::from_iter(inputs.into_iter().copied())
+        Self::from_iter(inputs.iter().copied())
     }
     fn from_iter(inputs: impl Iterator<Item = F>) -> Self {
         Self::from_byte_iter(inputs.flat_map(|x| x.to_canonical_u64().to_le_bytes()))
@@ -55,7 +55,7 @@ pub trait Hasher<F: RichField>: Sized + Copy + Debug + Eq + PartialEq {
     /// Hash a message without any padding step. Note that this can enable length-extension attacks.
     /// However, it is still collision-resistant in cases where the input has a fixed length.
     fn hash_no_pad(input: &[F]) -> Self::Hash {
-        Self::hash_no_pad_iter(input.into_iter().copied())
+        Self::hash_no_pad_iter(input.iter().copied())
     }
 
     /// Hash a message without any padding step. Note that this can enable length-extension attacks.
@@ -66,7 +66,7 @@ pub trait Hasher<F: RichField>: Sized + Copy + Debug + Eq + PartialEq {
     fn hash_pad(input: &[F]) -> Self::Hash {
         let zero_padding = (input.len() + 2) % Self::Permutation::RATE;
         let padded_input = chain!(
-            input.into_iter().copied(),
+            input.iter().copied(),
             [F::ONE],
             (0..zero_padding).map(|_| F::ZERO),
             [F::ONE],
@@ -83,7 +83,7 @@ pub trait Hasher<F: RichField>: Sized + Copy + Debug + Eq + PartialEq {
             Self::hash_no_pad(inputs)
         }
     }
-    
+
     /// Hash the slice if necessary to reduce its length to ~256 bits. If it already fits, this is a
     /// no-op.
     fn hash_or_noop_iter<I: IntoIterator<Item = F>>(inputs: I) -> Self::Hash {

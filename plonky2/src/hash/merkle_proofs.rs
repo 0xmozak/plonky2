@@ -91,7 +91,7 @@ pub fn verify_field_merkle_proof_to_cap<F: RichField, H: Hasher<F>>(
     let mut leaf_data_index = 1;
     for &sibling_digest in proof.siblings.iter() {
         if leaf_data_index < leaf_heights.len() && current_height == leaf_heights[leaf_data_index] {
-            let new_leaves = chain!( 
+            let new_leaves = chain!(
                 current_digest.into_iter(),
                 leaf_data[leaf_data_index].iter().copied(),
             );

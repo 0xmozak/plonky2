@@ -8,7 +8,7 @@ use itertools::{chain, Itertools};
 use crate::hash::hash_types::RichField;
 use crate::hash::merkle_proofs::MerkleProof;
 use crate::hash::merkle_tree::{
-    capacity_up_to_mut, fill_digests_buf, fill_digests_buf_custom, merkle_tree_prove, MerkleCap
+    capacity_up_to_mut, fill_digests_buf, fill_digests_buf_custom, merkle_tree_prove, MerkleCap,
 };
 use crate::plonk::config::{GenericHashOut, Hasher};
 use crate::util::log2_strict;
@@ -92,11 +92,8 @@ impl<F: RichField, H: Hasher<F>> FieldMerkleTree<F, H> {
                     &new_leaves[..],
                     next_cap_height,
                     |i, cap_hash| {
-                        H::hash_or_noop_iter(chain!(
-                            cap_hash.into_iter(),
-                            cur[i].iter().copied(),
-                        ))
-                    }
+                        H::hash_or_noop_iter(chain!(cap_hash.into_iter(), cur[i].iter().copied(),))
+                    },
                 );
             }
 
@@ -210,7 +207,10 @@ mod tests {
         assert_eq!(layer_1, fmt.digests[2..4]);
 
         let root = H::two_to_one(layer_1[0], layer_1[1]);
-        assert_eq!(fmt.cap.flatten().collect_vec(), root.into_iter().collect_vec());
+        assert_eq!(
+            fmt.cap.flatten().collect_vec(),
+            root.into_iter().collect_vec()
+        );
 
         let proof = fmt.open_batch(2);
         assert_eq!(proof.siblings, [mat_1_leaf_hashes[3], layer_1[0]]);
@@ -255,8 +255,12 @@ mod tests {
         assert_eq!(mat_1_leaf_hashes, fmt.digests[0..4]);
 
         let hidden_layer = [
-            H::two_to_one(mat_1_leaf_hashes[0], mat_1_leaf_hashes[1]).into_iter().collect_vec(),
-            H::two_to_one(mat_1_leaf_hashes[2], mat_1_leaf_hashes[3]).into_iter().collect_vec(),
+            H::two_to_one(mat_1_leaf_hashes[0], mat_1_leaf_hashes[1])
+                .into_iter()
+                .collect_vec(),
+            H::two_to_one(mat_1_leaf_hashes[2], mat_1_leaf_hashes[3])
+                .into_iter()
+                .collect_vec(),
         ];
         let new_leaves = hidden_layer
             .iter()
@@ -274,7 +278,10 @@ mod tests {
         assert_eq!(layer_1, fmt.digests[4..]);
 
         let root = H::two_to_one(layer_1[0], layer_1[1]);
-        assert_eq!(fmt.cap.flatten().collect_vec(), root.into_iter().collect_vec());
+        assert_eq!(
+            fmt.cap.flatten().collect_vec(),
+            root.into_iter().collect_vec()
+        );
 
         let proof = fmt.open_batch(1);
         assert_eq!(proof.siblings, [mat_1_leaf_hashes[0], layer_1[1]]);

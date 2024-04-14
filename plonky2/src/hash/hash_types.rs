@@ -1,7 +1,6 @@
-use core::borrow::{Borrow, BorrowMut};
-
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
+use core::borrow::BorrowMut;
 
 use anyhow::ensure;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -85,11 +84,11 @@ where
 }
 
 impl<F: RichField> GenericHashOut<F> for HashOut<F> {
-    fn to_bytes(self) -> impl AsRef<[u8]>+AsMut<[u8]>+Borrow<[u8]>+BorrowMut<[u8]>+Copy {
-        let mut bytes = [0u8; NUM_HASH_OUT_ELTS*8];
+    fn to_bytes(self) -> impl AsRef<[u8]> + AsMut<[u8]> + BorrowMut<[u8]> + Copy {
+        let mut bytes = [0u8; NUM_HASH_OUT_ELTS * 8];
         for (i, x) in self.elements.into_iter().enumerate() {
-            let i = i*8;
-            bytes[i..i+8].copy_from_slice(&x.to_canonical_u64().to_le_bytes())
+            let i = i * 8;
+            bytes[i..i + 8].copy_from_slice(&x.to_canonical_u64().to_le_bytes())
         }
         bytes
     }
@@ -108,8 +107,7 @@ impl<F: RichField> GenericHashOut<F> for HashOut<F> {
         let bytes = [[(); 8]; NUM_HASH_OUT_ELTS].map(|b| b.map(|()| bytes.next().unwrap()));
 
         HashOut {
-            elements: bytes
-                .map(|x| F::from_canonical_u64(u64::from_le_bytes(x.try_into().unwrap()))),
+            elements: bytes.map(|x| F::from_canonical_u64(u64::from_le_bytes(x))),
         }
     }
 
@@ -189,7 +187,7 @@ impl<const N: usize> Sample for BytesHash<N> {
 }
 
 impl<F: RichField, const N: usize> GenericHashOut<F> for BytesHash<N> {
-    fn to_bytes(self) -> impl AsRef<[u8]>+AsMut<[u8]>+Borrow<[u8]>+BorrowMut<[u8]>+Copy {
+    fn to_bytes(self) -> impl AsRef<[u8]> + AsMut<[u8]> + BorrowMut<[u8]> + Copy {
         self.0
     }
 
@@ -204,11 +202,11 @@ impl<F: RichField, const N: usize> GenericHashOut<F> for BytesHash<N> {
     fn into_iter(self) -> impl Iterator<Item = F> {
         // Chunks of 7 bytes since 8 bytes would allow collisions.
         const STRIDE: usize = 7;
-        
-        (0..((N+STRIDE-1)/STRIDE)).map(move |i| {
+
+        (0..((N + STRIDE - 1) / STRIDE)).map(move |i| {
             let mut arr = [0; 8];
-            let i = i*STRIDE;
-            let bytes = &self.0[i..std::cmp::min(i+STRIDE, N)];
+            let i = i * STRIDE;
+            let bytes = &self.0[i..std::cmp::min(i + STRIDE, N)];
             arr[..bytes.len()].copy_from_slice(bytes);
             F::from_canonical_u64(u64::from_le_bytes(arr))
         })
