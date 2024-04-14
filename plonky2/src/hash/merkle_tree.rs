@@ -83,13 +83,16 @@ pub(crate) fn capacity_up_to_mut<T>(v: &mut Vec<T>, len: usize) -> &mut [MaybeUn
     }
 }
 
-pub(crate) fn fill_subtree<F: RichField, H: Hasher<F>>(
+pub(crate) fn fill_subtree<F, H, L, HF>(
+    index: usize,
     digests_buf: &mut [MaybeUninit<H::Hash>],
-    leaves: &[Vec<F>],
-) -> H::Hash {
+    leaves: &[L],
+    hash_fn: HF,
+) -> H::Hash
+where F: RichField, H: Hasher<F>, L: Send+Sync, HF: Send+Clone+Fn(usize, &L) -> H::Hash {
     assert_eq!(leaves.len(), digests_buf.len() / 2 + 1);
     if digests_buf.is_empty() {
-        H::hash_or_noop(&leaves[0])
+        hash_fn(index, &leaves[0])
     } else {
         // Layout is: left recursive output || left child digest
         //             || right child digest || right recursive output.
@@ -101,9 +104,13 @@ pub(crate) fn fill_subtree<F: RichField, H: Hasher<F>>(
         // Split `leaves` between both children.
         let (left_leaves, right_leaves) = leaves.split_at(leaves.len() / 2);
 
+        let left_index = index;
+        let right_index = index + leaves.len() / 2;
+
+        let left_fn = hash_fn.clone();
         let (left_digest, right_digest) = plonky2_maybe_rayon::join(
-            || fill_subtree::<F, H>(left_digests_buf, left_leaves),
-            || fill_subtree::<F, H>(right_digests_buf, right_leaves),
+            move || fill_subtree::<F, H, L, HF>(left_index, left_digests_buf, left_leaves, left_fn),
+            move || fill_subtree::<F, H, L, HF>(right_index, right_digests_buf, right_leaves, hash_fn),
         );
 
         left_digest_mem.write(left_digest);
@@ -118,6 +125,17 @@ pub(crate) fn fill_digests_buf<F: RichField, H: Hasher<F>>(
     leaves: &[Vec<F>],
     cap_height: usize,
 ) {
+    fill_digests_buf_custom::<F, H, _, _>(digests_buf, cap_buf, leaves, cap_height, |_, x| H::hash_or_noop(x))
+}
+
+pub(crate) fn fill_digests_buf_custom<F, H, L, HF>(
+    digests_buf: &mut [MaybeUninit<H::Hash>],
+    cap_buf: &mut [MaybeUninit<H::Hash>],
+    leaves: &[L],
+    cap_height: usize,
+    hash_fn: HF,
+) 
+where F: RichField, H: Hasher<F>, L: Send+Sync, HF: Send+Sync+Clone+Fn(usize, &L) -> H::Hash {
     // Special case of a tree that's all cap. The usual case will panic because we'll try to split
     // an empty slice into chunks of `0`. (We would not need this if there was a way to split into
     // `blah` chunks as opposed to chunks _of_ `blah`.)
@@ -126,8 +144,9 @@ pub(crate) fn fill_digests_buf<F: RichField, H: Hasher<F>>(
         cap_buf
             .par_iter_mut()
             .zip(leaves)
-            .for_each(|(cap_buf, leaf)| {
-                cap_buf.write(H::hash_or_noop(leaf));
+            .enumerate()
+            .for_each(|(i, (cap_buf, leaf))| {
+                cap_buf.write(hash_fn(i, leaf));
             });
         return;
     }
@@ -143,7 +162,7 @@ pub(crate) fn fill_digests_buf<F: RichField, H: Hasher<F>>(
             // We have `1 << cap_height` sub-trees, one for each entry in `cap`. They are totally
             // independent, so we schedule one task for each. `digests_buf` and `leaves` are split
             // into `1 << cap_height` slices, one for each sub-tree.
-            subtree_cap.write(fill_subtree::<F, H>(subtree_digests, subtree_leaves));
+            subtree_cap.write(fill_subtree::<F, H, L, HF>(0, subtree_digests, subtree_leaves, hash_fn.clone()));
         },
     );
 }

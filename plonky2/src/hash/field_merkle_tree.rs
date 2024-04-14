@@ -3,12 +3,12 @@ use alloc::vec;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
-use itertools::Itertools;
+use itertools::{chain, Itertools};
 
-use crate::hash::hash_types::{RichField, NUM_HASH_OUT_ELTS};
+use crate::hash::hash_types::RichField;
 use crate::hash::merkle_proofs::MerkleProof;
 use crate::hash::merkle_tree::{
-    capacity_up_to_mut, fill_digests_buf, merkle_tree_prove, MerkleCap,
+    capacity_up_to_mut, fill_digests_buf, fill_digests_buf_custom, merkle_tree_prove, MerkleCap
 };
 use crate::plonk::config::{GenericHashOut, Hasher};
 use crate::util::log2_strict;
@@ -83,24 +83,20 @@ impl<F: RichField, H: Hasher<F>> FieldMerkleTree<F, H> {
                 );
             } else {
                 // The rest leaf layers
-                let new_leaves: Vec<Vec<F>> = cap
-                    .iter()
-                    .enumerate()
-                    .map(|(i, cap_hash)| {
-                        let mut new_hash = Vec::with_capacity(NUM_HASH_OUT_ELTS + cur[i].len());
-                        new_hash.extend(cap_hash.into_iter());
-                        new_hash.extend(&cur[i]);
-                        new_hash
-                    })
-                    .collect();
-                cap.clear();
-                cap.reserve_exact(next_cap_len);
+                let new_leaves = cap;
+                cap = Vec::with_capacity(next_cap_len);
                 let tmp_cap_buf = capacity_up_to_mut(&mut cap, next_cap_len);
-                fill_digests_buf::<F, H>(
+                fill_digests_buf_custom::<F, H, _, _>(
                     &mut digests_buf[digests_buf_pos..(digests_buf_pos + num_tmp_digests)],
                     tmp_cap_buf,
                     &new_leaves[..],
                     next_cap_height,
+                    |i, cap_hash| {
+                        H::hash_or_noop_iter(chain!(
+                            cap_hash.into_iter(),
+                            cur[i].iter().copied(),
+                        ))
+                    }
                 );
             }
 
