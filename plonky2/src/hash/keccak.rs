@@ -68,7 +68,7 @@ impl<F: RichField> PlonkyPermutation<F> for KeccakPermutation<F> {
         let hash_onion = (0..).scan(keccak(state_bytes), |state, _| {
             let output = state.0;
             *state = keccak(output);
-            Some(output) 
+            Some(output)
         });
 
         let hash_onion_u64s = hash_onion.flat_map(|output| {
@@ -123,7 +123,7 @@ impl<F: RichField, const N: usize> Hasher<F> for KeccakHash<N> {
         }
 
         let mut hash_bytes = [0u8; 32];
-        keccak256.finalize(&mut hash_bytes); 
+        keccak256.finalize(&mut hash_bytes);
 
         let mut arr = [0; N];
         arr.copy_from_slice(&hash_bytes[..N]);
