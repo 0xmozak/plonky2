@@ -10,7 +10,7 @@ use alloc::{
 use std::sync::Arc;
 
 use itertools::Itertools;
-use keccak_hash::keccak;
+use plonky2_util::ceil_div_usize;
 
 use crate::field::extension::Extendable;
 use crate::field::packed::PackedField;
@@ -18,6 +18,7 @@ use crate::gates::gate::Gate;
 use crate::gates::packed_util::PackedEvaluableBase;
 use crate::gates::util::StridedConstraintConsumer;
 use crate::hash::hash_types::RichField;
+use crate::hash::keccak::keccak;
 use crate::iop::ext_target::ExtensionTarget;
 use crate::iop::generator::{GeneratedValues, SimpleGenerator, WitnessGeneratorRef};
 use crate::iop::target::Target;
@@ -206,7 +207,7 @@ impl<F: RichField + Extendable<D>, const D: usize> SimpleGenerator<F, D> for Loo
     }
 
     fn run_once(&self, _witness: &PartitionWitness<F>, out_buffer: &mut GeneratedValues<F>) {
-        let first_row = self.last_lut_row + self.lut.len().div_ceil(self.num_slots) - 1;
+        let first_row = self.last_lut_row + ceil_div_usize(self.lut.len(), self.num_slots) - 1;
         let slot = (first_row - self.row) * self.num_slots + self.slot_nb;
 
         let slot_input_target =
