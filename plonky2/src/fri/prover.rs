@@ -77,6 +77,7 @@ pub(crate) fn fri_committed_trees<
     challenger: &mut Challenger<F, C::Hasher>,
     fri_params: &FriParams,
 ) -> FriCommitedTrees<F, C, D> {
+    // TODO(Matthias): we can probably do something sensible for zero length values?
     let mut trees = Vec::with_capacity(fri_params.reduction_arity_bits.len());
 
     let mut shift = F::MULTIPLICATIVE_GROUP_GENERATOR;

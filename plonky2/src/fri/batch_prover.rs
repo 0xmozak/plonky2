@@ -3,6 +3,7 @@ use alloc::vec;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
+use itertools::izip;
 use plonky2_field::extension::flatten;
 use plonky2_field::types::Field;
 use plonky2_maybe_rayon::*;
@@ -79,24 +80,33 @@ pub(crate) fn batch_fri_committed_trees<
     C: GenericConfig<D, F = F>,
     const D: usize,
 >(
+    // OK, this is something we get as an input, but we don't return it?
+    // Oh, we do return it after fiddling with it.
     mut final_coeffs: PolynomialCoeffs<F::Extension>,
     values: &[PolynomialValues<F::Extension>],
+    // TODO(Matthias): see about parallelising!
     challenger: &mut Challenger<F, C::Hasher>,
     fri_params: &FriParams,
 ) -> FriCommitedTrees<F, C, D> {
+    // TODO(Matthias): we can probably do something sensible for zero length values?
     let mut trees = Vec::with_capacity(fri_params.reduction_arity_bits.len());
-    let mut shift = F::MULTIPLICATIVE_GROUP_GENERATOR;
-    let mut polynomial_index = 1;
-    let mut final_values = values[0].clone();
-    for arity_bits in &fri_params.reduction_arity_bits {
-        let arity = 1 << arity_bits;
 
+    let mut values = values.iter().peekable();
+    let mut final_values = values.next().unwrap().clone();
+
+    let arities = fri_params
+        .reduction_arity_bits
+        .iter()
+        .map(|&arity_bits| 1 << arity_bits);
+    let shifts = arities
+        .clone()
+        .scan(F::MULTIPLICATIVE_GROUP_GENERATOR, |shift, arity| {
+            *shift = shift.exp_u64(arity as u64);
+            Some(*shift)
+        });
+    for (arity_bits, arity, shift) in izip!(&fri_params.reduction_arity_bits, arities, shifts) {
         reverse_index_bits_in_place(&mut final_values.values);
-        let chunked_values = final_values
-            .values
-            .par_chunks(arity)
-            .map(|chunk: &[F::Extension]| flatten(chunk))
-            .collect();
+        let chunked_values = final_values.values.par_chunks(arity).map(flatten).collect();
         let tree = MerkleTree::<F, C::Hasher>::new(chunked_values, fri_params.config.cap_height);
 
         challenger.observe_cap(&tree.cap);
@@ -111,24 +121,25 @@ pub(crate) fn batch_fri_committed_trees<
                 .map(|chunk| reduce_with_powers(chunk, beta))
                 .collect::<Vec<_>>(),
         );
-        shift = shift.exp_u64(arity as u64);
         final_values = final_coeffs.coset_fft(shift.into());
-        if polynomial_index != values.len() && final_values.len() == values[polynomial_index].len()
-        {
+        // I suspect this is for supporting equal length trees?
+        // So bump polynomial_index, if we still have values to fold in?
+        // So we consume the next values item here, whenever our length match, and we haven't exhausted the values?
+        if Some(final_values.len()) == values.peek().map(|v| v.len()) {
+            let value = values.next().unwrap();
             final_values = PolynomialValues::new(
                 final_values
                     .values
                     .iter()
-                    .zip(&values[polynomial_index].values)
+                    .zip(&value.values)
                     .map(|(&f, &v)| f + v * beta.exp_power_of_2(*arity_bits))
                     .collect::<Vec<_>>(),
             );
-            polynomial_index += 1;
         }
         //TODO: optimize the folding process.
         final_coeffs = final_values.clone().coset_ifft(shift.into());
     }
-    assert_eq!(polynomial_index, values.len());
+    assert_eq!(values.next(), None);
 
     // The coefficients being removed here should always be zero.
     final_coeffs
@@ -136,6 +147,7 @@ pub(crate) fn batch_fri_committed_trees<
         .truncate(final_coeffs.len() >> fri_params.config.rate_bits);
 
     challenger.observe_extension_elements(&final_coeffs.coeffs);
+    assert_eq!(fri_params.reduction_arity_bits.len(), trees.len());
     (trees, final_coeffs)
 }
 
@@ -217,10 +229,9 @@ mod tests {
     use anyhow::Result;
     use itertools::Itertools;
     use plonky2_field::goldilocks_field::GoldilocksField;
-    use plonky2_field::types::{Field, Field64, Sample};
+    use plonky2_field::types::{Field64, Sample};
 
     use super::*;
-    use crate::field::extension::Extendable;
     use crate::fri::batch_oracle::BatchFriOracle;
     use crate::fri::batch_verifier::verify_batch_fri_proof;
     use crate::fri::reduction_strategies::FriReductionStrategy;
@@ -229,7 +240,7 @@ mod tests {
         FriPolynomialInfo,
     };
     use crate::fri::FriConfig;
-    use crate::plonk::config::{GenericConfig, PoseidonGoldilocksConfig};
+    use crate::plonk::config::PoseidonGoldilocksConfig;
 
     const D: usize = 2;
 

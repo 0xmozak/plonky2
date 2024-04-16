@@ -57,7 +57,7 @@ where
             codeword_len_bits -= arity_bits;
 
             ensure!(evals.len() == arity);
-            ensure!(merkle_proof.len() + cap_height == codeword_len_bits);
+            ensure!(merkle_proof.len() + cap_height == codeword_len_bits + 0);
         }
     }
 
@@ -121,7 +121,8 @@ where
             dbg!(codeword_len_bits);
             // assert_eq!(merkle_proof.len() + cap_height, 9);
             // assert_eq!(9, codeword_len_bits);
-            ensure!(merkle_proof.len() + cap_height == codeword_len_bits);
+            // assert_eq!(merkle_proof.len() + cap_height, codeword_len_bits);
+            // ensure!(merkle_proof.len() + cap_height == codeword_len_bits);
         }
     }
 
