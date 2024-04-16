@@ -26,7 +26,7 @@ use crate::iop::target::{BoolTarget, Target};
 use crate::plonk::circuit_builder::CircuitBuilder;
 
 pub trait GenericHashOut<F: RichField>:
-    Copy + Clone + Debug + Eq + PartialEq + Send + Sync + Serialize + DeserializeOwned + IntoIterator
+    Copy + Clone + Debug + Eq + PartialEq + Send + Sync + Serialize + DeserializeOwned
 {
     fn to_bytes(self) -> impl AsRef<[u8]> + AsMut<[u8]> + BorrowMut<[u8]> + Copy;
     fn from_bytes(bytes: &[u8]) -> Self;
@@ -37,6 +37,8 @@ pub trait GenericHashOut<F: RichField>:
     fn from_iter(inputs: impl Iterator<Item = F>) -> Self {
         Self::from_byte_iter(inputs.flat_map(|x| x.to_canonical_u64().to_le_bytes()))
     }
+
+    fn into_iter(self) -> impl Iterator<Item = F>;
 }
 
 /// Trait for hash functions.
