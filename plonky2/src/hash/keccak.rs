@@ -68,7 +68,7 @@ impl<F: RichField> PlonkyPermutation<F> for KeccakPermutation<F> {
         let hash_onion = (0..).scan(keccak(state_bytes), |state, _| {
             let output = state.0;
             *state = keccak(output);
-            Some(output)
+            Some(output) 
         });
 
         let hash_onion_u64s = hash_onion.flat_map(|output| {
