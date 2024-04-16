@@ -123,7 +123,7 @@ impl<F: RichField, const N: usize> Hasher<F> for KeccakHash<N> {
         }
 
         let mut hash_bytes = [0u8; 32];
-        keccak256.finalize(&mut hash_bytes);
+        keccak256.finalize(&mut hash_bytes); 
 
         let mut arr = [0; N];
         arr.copy_from_slice(&hash_bytes[..N]);
