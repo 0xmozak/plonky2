@@ -23,7 +23,7 @@ ahash = { workspace = true }
 anyhow = { workspace = true }
 hashbrown = { workspace = true }
 itertools = { workspace = true }
-tiny-keccak = { version = "2.0.0", features = ["keccak"] }
+tiny-keccak = { version = "2.0", features = ["keccak"] }
 log = { workspace = true }
 num = { workspace = true }
 rand = { workspace = true }
