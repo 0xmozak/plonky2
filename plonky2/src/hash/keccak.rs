@@ -1,5 +1,4 @@
-#[cfg(not(feature = "std"))]
-use alloc::{vec, vec::Vec};
+use core::borrow::Borrow;
 use core::mem::size_of;
 
 use itertools::Itertools;
@@ -60,23 +59,25 @@ impl<F: RichField> PlonkyPermutation<F> for KeccakPermutation<F> {
     }
 
     fn permute(&mut self) {
-        let mut state_bytes = vec![0u8; SPONGE_WIDTH * size_of::<u64>()];
-        for i in 0..SPONGE_WIDTH {
+        let mut state_bytes = [0u8; SPONGE_WIDTH * size_of::<u64>()];
+        for (i, x) in self.state.iter().enumerate() {
             state_bytes[i * size_of::<u64>()..(i + 1) * size_of::<u64>()]
-                .copy_from_slice(&self.state[i].to_canonical_u64().to_le_bytes());
+                .copy_from_slice(&x.to_canonical_u64().to_le_bytes());
         }
 
-        let hash_onion = core::iter::repeat_with(|| {
-            let output = keccak(state_bytes.clone()).0;
-            state_bytes = output.to_vec();
-            output
+        let hash_onion = (0..).scan(keccak(state_bytes), |state, _| {
+            let output = state.0;
+            *state = keccak(output);
+            Some(output)
         });
 
         let hash_onion_u64s = hash_onion.flat_map(|output| {
-            output
-                .chunks_exact(size_of::<u64>())
-                .map(|word| u64::from_le_bytes(word.try_into().unwrap()))
-                .collect_vec()
+            const STRIDE: usize = size_of::<u64>();
+
+            (0..32).step_by(STRIDE).map(move |i| {
+                let bytes = output[i..].first_chunk::<STRIDE>().unwrap();
+                u64::from_le_bytes(*bytes)
+            })
         });
 
         // Parse field elements from u64 stream, using rejection sampling such that words that don't
@@ -95,6 +96,12 @@ impl<F: RichField> PlonkyPermutation<F> for KeccakPermutation<F> {
     fn squeeze(&self) -> &[F] {
         &self.state[..Self::RATE]
     }
+
+    fn squeeze_iter(self) -> impl IntoIterator<Item = F> + Copy {
+        let mut vals = [F::default(); SPONGE_RATE];
+        vals.copy_from_slice(self.squeeze());
+        vals
+    }
 }
 
 /// Keccak-256 hash function.
@@ -105,12 +112,13 @@ impl<F: RichField, const N: usize> Hasher<F> for KeccakHash<N> {
     type Hash = BytesHash<N>;
     type Permutation = KeccakPermutation<F>;
 
-    fn hash_no_pad(input: &[F]) -> Self::Hash {
+    fn hash_no_pad_iter<I: IntoIterator<Item = F>>(input: I) -> Self::Hash {
         let mut keccak256 = Keccak::v256();
-        for x in input.iter() {
-            let b = x.to_canonical_u64().to_le_bytes();
+        for x in input.into_iter() {
+            let b = x.borrow().to_canonical_u64().to_le_bytes();
             keccak256.update(&b);
         }
+
         let mut hash_bytes = [0u8; 32];
         keccak256.finalize(&mut hash_bytes);
 

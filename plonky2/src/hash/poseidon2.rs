@@ -12,6 +12,7 @@ use plonky2_field::extension::{Extendable, FieldExtension};
 use plonky2_field::types::{Field, PrimeField64};
 use unroll::unroll_for_loops;
 
+use super::hashing::hash_n_to_hash_no_pad_iter;
 use crate::gates::poseidon2::Poseidon2Gate;
 use crate::hash::hash_types::{HashOut, RichField};
 use crate::hash::hashing::{compress, hash_n_to_hash_no_pad, PlonkyPermutation};
@@ -31,6 +32,7 @@ pub const ROUND_F_BEGIN: usize = 4;
 pub const ROUND_F_END: usize = 2 * ROUND_F_BEGIN;
 pub const ROUND_P: usize = 22;
 pub const ROUNDS: usize = ROUND_F_END + ROUND_P;
+pub const RATE: usize = 8;
 pub const WIDTH: usize = 12; // we only have width 8 and 12, and 12 is bigger. :)
 
 pub trait Poseidon2: PrimeField64 {
@@ -522,7 +524,7 @@ impl<T> AsRef<[T]> for Poseidon2Permutation<T> {
 impl<T: Copy + Debug + Default + Eq + Permuter + Send + Sync> PlonkyPermutation<T>
     for Poseidon2Permutation<T>
 {
-    const RATE: usize = 8;
+    const RATE: usize = RATE;
     const WIDTH: usize = WIDTH;
 
     fn new<I: IntoIterator<Item = T>>(elts: I) -> Self {
@@ -556,6 +558,12 @@ impl<T: Copy + Debug + Default + Eq + Permuter + Send + Sync> PlonkyPermutation<
     fn squeeze(&self) -> &[T] {
         &self.state[..Self::RATE]
     }
+
+    fn squeeze_iter(self) -> impl IntoIterator<Item = T> + Copy {
+        let mut vals = [T::default(); RATE];
+        vals.copy_from_slice(self.squeeze());
+        vals
+    }
 }
 
 /// Poseidon2 hash function.
@@ -568,6 +576,10 @@ impl<F: RichField> Hasher<F> for Poseidon2Hash {
 
     fn hash_no_pad(input: &[F]) -> Self::Hash {
         hash_n_to_hash_no_pad::<F, Self::Permutation>(input)
+    }
+
+    fn hash_no_pad_iter<I: IntoIterator<Item = F>>(input: I) -> Self::Hash {
+        hash_n_to_hash_no_pad_iter::<F, Self::Permutation, I>(input)
     }
 
     fn two_to_one(left: Self::Hash, right: Self::Hash) -> Self::Hash {

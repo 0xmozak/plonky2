@@ -55,7 +55,11 @@ impl<F: RichField, H: Hasher<F>> Challenger<F, H> {
     }
 
     pub fn observe_elements(&mut self, elements: &[F]) {
-        for &element in elements {
+        self.observe_elements_iter(elements.iter().copied())
+    }
+
+    pub fn observe_elements_iter(&mut self, elements: impl IntoIterator<Item = F>) {
+        for element in elements {
             self.observe_element(element);
         }
     }
@@ -70,7 +74,7 @@ impl<F: RichField, H: Hasher<F>> Challenger<F, H> {
     }
 
     pub fn observe_hash<OH: Hasher<F>>(&mut self, hash: OH::Hash) {
-        self.observe_elements(&hash.to_vec())
+        self.observe_elements_iter(hash.into_iter())
     }
 
     pub fn observe_cap<OH: Hasher<F>>(&mut self, cap: &MerkleCap<F, OH>) {

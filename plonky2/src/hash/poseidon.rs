@@ -2,12 +2,13 @@
 //! <https://eprint.iacr.org/2019/458.pdf>
 
 #[cfg(not(feature = "std"))]
-use alloc::{vec, vec::Vec};
+use alloc::vec;
 use core::fmt::Debug;
 
 use plonky2_field::packed::PackedField;
 use unroll::unroll_for_loops;
 
+use super::hashing::hash_n_to_hash_no_pad_iter;
 use crate::field::extension::{Extendable, FieldExtension};
 use crate::field::types::{Field, PrimeField64};
 use crate::gates::gate::Gate;
@@ -337,18 +338,17 @@ pub trait Poseidon: PrimeField64 {
         let mds_gate = PoseidonMdsGate::<Self, D>::new();
         if builder.config.num_routed_wires >= mds_gate.num_wires() {
             let index = builder.add_gate(mds_gate, vec![]);
-            for i in 0..SPONGE_WIDTH {
+            let mut result = [0; SPONGE_WIDTH];
+            for (i, r) in result.iter_mut().enumerate() {
+                *r = i;
                 let input_wire = PoseidonMdsGate::<Self, D>::wires_input(i);
                 builder.connect_extension(state[i], ExtensionTarget::from_range(index, input_wire));
             }
-            (0..SPONGE_WIDTH)
-                .map(|i| {
-                    let output_wire = PoseidonMdsGate::<Self, D>::wires_output(i);
-                    ExtensionTarget::from_range(index, output_wire)
-                })
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap()
+
+            result.map(|i| {
+                let output_wire = PoseidonMdsGate::<Self, D>::wires_output(i);
+                ExtensionTarget::from_range(index, output_wire)
+            })
         } else {
             let mut result = [builder.zero_extension(); SPONGE_WIDTH];
 
@@ -867,6 +867,12 @@ impl<T: Copy + Debug + Default + Eq + Permuter + Send + Sync> PlonkyPermutation<
     fn squeeze(&self) -> &[T] {
         &self.state[..Self::RATE]
     }
+
+    fn squeeze_iter(self) -> impl IntoIterator<Item = T> + Copy {
+        let mut vals = [T::default(); SPONGE_RATE];
+        vals.copy_from_slice(self.squeeze());
+        vals
+    }
 }
 
 /// Poseidon hash function.
@@ -879,6 +885,10 @@ impl<F: RichField> Hasher<F> for PoseidonHash {
 
     fn hash_no_pad(input: &[F]) -> Self::Hash {
         hash_n_to_hash_no_pad::<F, Self::Permutation>(input)
+    }
+
+    fn hash_no_pad_iter<I: IntoIterator<Item = F>>(input: I) -> Self::Hash {
+        hash_n_to_hash_no_pad_iter::<F, Self::Permutation, I>(input)
     }
 
     fn two_to_one(left: Self::Hash, right: Self::Hash) -> Self::Hash {
@@ -921,6 +931,9 @@ impl<F: RichField> AlgebraicHasher<F> for PoseidonHash {
 
 #[cfg(test)]
 pub(crate) mod test_helpers {
+    #[cfg(not(feature = "std"))]
+    use alloc::vec::Vec;
+
     use super::*;
 
     pub(crate) fn check_test_vectors<F>(

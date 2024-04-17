@@ -2,7 +2,7 @@
 use alloc::{vec, vec::Vec};
 
 use anyhow::{ensure, Result};
-use itertools::Itertools;
+use itertools::{chain, Itertools};
 use serde::{Deserialize, Serialize};
 
 use crate::field::extension::Extendable;
@@ -91,9 +91,11 @@ pub fn verify_field_merkle_proof_to_cap<F: RichField, H: Hasher<F>>(
     let mut leaf_data_index = 1;
     for &sibling_digest in proof.siblings.iter() {
         if leaf_data_index < leaf_heights.len() && current_height == leaf_heights[leaf_data_index] {
-            let mut new_leaves = current_digest.to_vec();
-            new_leaves.extend_from_slice(&leaf_data[leaf_data_index]);
-            current_digest = H::hash_or_noop(&new_leaves);
+            let new_leaves = chain!(
+                current_digest.into_iter(),
+                leaf_data[leaf_data_index].iter().copied(),
+            );
+            current_digest = H::hash_or_noop_iter(new_leaves);
             leaf_data_index += 1;
         }
 
