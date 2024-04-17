@@ -100,7 +100,7 @@ pub(crate) fn batch_fri_committed_trees<
         .map(|&arity_bits| 1 << arity_bits);
     let shifts = arities
         .clone()
-        .scan(F::MULTIPLICATIVE_GROUP_GENERATOR, |shift, arity| {
+        .scan(F::MULTIPLICATIVE_GROUP_GENERATOR, |shift: &mut F, arity| {
             *shift = shift.exp_u64(arity as u64);
             Some(*shift)
         });
@@ -108,6 +108,7 @@ pub(crate) fn batch_fri_committed_trees<
         reverse_index_bits_in_place(&mut final_values.values);
         let chunked_values = final_values.values.par_chunks(arity).map(flatten).collect();
         let tree = MerkleTree::<F, C::Hasher>::new(chunked_values, fri_params.config.cap_height);
+        // dbg!(final_values);
 
         challenger.observe_cap(&tree.cap);
         trees.push(tree);
@@ -139,6 +140,7 @@ pub(crate) fn batch_fri_committed_trees<
         //TODO: optimize the folding process.
         final_coeffs = final_values.clone().coset_ifft(shift.into());
     }
+    // Make sure we consumed all values:
     assert_eq!(values.next(), None);
 
     // The coefficients being removed here should always be zero.
