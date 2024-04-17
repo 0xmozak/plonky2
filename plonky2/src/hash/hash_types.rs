@@ -1,7 +1,6 @@
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use core::borrow::BorrowMut;
-use core::cmp;
 
 use anyhow::ensure;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -197,17 +196,19 @@ impl<F: RichField, const N: usize> GenericHashOut<F> for BytesHash<N> {
     }
 
     fn from_byte_iter(mut bytes: impl Iterator<Item = u8>) -> Self {
-        Self([(); N].map(|()| bytes.next().unwrap()))
+        Self(core::array::from_fn(|_| bytes.next().unwrap()))
     }
 
     fn into_iter(self) -> impl Iterator<Item = F> {
         // Chunks of 7 bytes since 8 bytes would allow collisions.
         const STRIDE: usize = 7;
 
-        (0..((N + STRIDE - 1) / STRIDE)).map(move |i| {
+        (0..N).step_by(STRIDE).map(move |i| {
+            let mut bytes = &self.0[i..];
+            if bytes.len() > STRIDE {
+                bytes = &bytes[..STRIDE];
+            }
             let mut arr = [0; 8];
-            let i = i * STRIDE;
-            let bytes = &self.0[i..cmp::min(i + STRIDE, N)];
             arr[..bytes.len()].copy_from_slice(bytes);
             F::from_canonical_u64(u64::from_le_bytes(arr))
         })

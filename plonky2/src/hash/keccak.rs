@@ -74,12 +74,9 @@ impl<F: RichField> PlonkyPermutation<F> for KeccakPermutation<F> {
         let hash_onion_u64s = hash_onion.flat_map(|output| {
             const STRIDE: usize = size_of::<u64>();
 
-            (0..(32 / STRIDE)).map(move |i| {
-                let mut arr = [0; 8];
-                let i = i * STRIDE;
-                let bytes = &output[i..(i + STRIDE)];
-                arr[..bytes.len()].copy_from_slice(bytes);
-                u64::from_le_bytes(arr)
+            (0..32).step_by(STRIDE).map(move |i| {
+                let bytes = output[i..].first_chunk::<STRIDE>().unwrap();
+                u64::from_le_bytes(*bytes)
             })
         });
 

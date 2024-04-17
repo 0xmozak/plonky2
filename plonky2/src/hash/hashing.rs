@@ -2,6 +2,9 @@
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use core::fmt::Debug;
+use core::iter::repeat_with;
+
+use itertools::chain;
 
 use crate::field::extension::Extendable;
 use crate::field::types::Field;
@@ -158,14 +161,13 @@ pub fn hash_n_to_m_no_pad_iter<F: RichField, P: PlonkyPermutation<F>, I: IntoIte
         perm.permute();
     }
 
-    let mut first = true;
-    core::iter::repeat_with(move || {
-        if !first {
-            perm.permute()
-        }
-        first = false;
-        perm.squeeze_iter()
-    })
+    chain!(
+        [perm.squeeze_iter()],
+        repeat_with(move || {
+            perm.permute();
+            perm.squeeze_iter()
+        })
+    )
     .flatten()
 }
 
