@@ -4,6 +4,7 @@
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(missing_debug_implementations)]
 #![feature(specialization)]
+#![feature(array_chunks)]
 #![cfg_attr(not(test), no_std)]
 #![cfg(not(test))]
 extern crate alloc;
