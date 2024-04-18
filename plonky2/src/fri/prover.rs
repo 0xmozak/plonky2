@@ -206,15 +206,14 @@ fn fri_prover_query_round<
         .collect::<Vec<_>>();
     for (i, tree) in trees.iter().enumerate() {
         let arity_bits = fri_params.reduction_arity_bits[i];
-        let evals = unflatten(tree.get(x_index >> arity_bits));
-        let merkle_proof = tree.prove(x_index >> arity_bits);
+        x_index >>= arity_bits;
+        let evals = unflatten(tree.get(x_index));
+        let merkle_proof = tree.prove(x_index);
 
         query_steps.push(FriQueryStep {
             evals,
             merkle_proof,
         });
-
-        x_index >>= arity_bits;
     }
     FriQueryRound {
         initial_trees_proof: FriInitialTreeProof {

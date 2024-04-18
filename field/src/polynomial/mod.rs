@@ -7,7 +7,7 @@ use core::iter::Sum;
 use core::ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign};
 
 use anyhow::{ensure, Result};
-use itertools::Itertools;
+use itertools::{izip, Itertools};
 use plonky2_util::log2_strict;
 use serde::{Deserialize, Serialize};
 
@@ -22,6 +22,49 @@ use crate::types::Field;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PolynomialValues<F: Field> {
     pub values: Vec<F>,
+}
+
+impl<F: Field> Add<Self> for PolynomialValues<F> {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        debug_assert_eq!(self.len(), rhs.len());
+        izip!(self.values, rhs.values)
+            .map(|(x, y)| x + y)
+            .collect::<Vec<_>>()
+            .into()
+    }
+}
+
+impl<F: Field> AddAssign<Self> for PolynomialValues<F> {
+    fn add_assign(&mut self, rhs: Self) {
+        assert_eq!(self.len(), rhs.len());
+        izip!(&mut self.values, rhs.values).for_each(|(x, y)| *x += y);
+    }
+}
+
+impl<F: Field> Mul<F> for PolynomialValues<F> {
+    type Output = Self;
+
+    fn mul(self, rhs: F) -> Self::Output {
+        self.values
+            .into_iter()
+            .map(|x| x * rhs)
+            .collect::<Vec<_>>()
+            .into()
+    }
+}
+
+impl<F: Field> Mul<F> for &PolynomialValues<F> {
+    type Output = PolynomialValues<F>;
+
+    fn mul(self, rhs: F) -> Self::Output {
+        self.values
+            .iter()
+            .map(|&x| x * rhs)
+            .collect::<Vec<_>>()
+            .into()
+    }
 }
 
 impl<F: Field> PolynomialValues<F> {
