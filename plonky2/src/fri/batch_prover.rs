@@ -168,27 +168,20 @@ pub(crate) fn batch_fri_committed_trees<
     let mut values = values.iter().peekable();
     let mut acc_coeffs: PolynomialCoeffs<F::Extension> = PolynomialCoeffs::empty();
 
-    let arities = once(&0)
-        .chain(&fri_params.reduction_arity_bits)
+    let arities = fri_params
+        .reduction_arity_bits
+        .iter()
         .map(|&arity_bits| 1_usize << arity_bits);
-    // We need an 'artificial' zeroth shift, that we get from a zero arity, -ish.
-    // Or do we?
     let shifts = arities
         .clone()
         // This is very similar to 'F::powers', but with some jumps.
         .scan(F::coset_shift(), |shift: &mut F, arity| {
+            let old_shift = *shift;
             *shift = shift.exp_u64(arity as u64);
-            Some(*shift)
+            Some(old_shift)
         });
-    // So we take from values one by one, and feed into the final_values and final_coeffs.
-    // We reduce final_coeefs and final_values, until we get another set of values to fold in.
-    // We actually know that ahead of time.
-    // We consume arities and shifts while doing so.
-    // Outer loop: get a new value.
-    //      Inner loop: reduce until we can fold in the next value.
-    // Can we do this recursively?  Yes, I guess so?
     let mut beta = F::Extension::ONE;
-    let trees = izip!(arities.skip(1), shifts.clone())
+    let trees = izip!(arities, shifts)
         .map(|(new_arity, old_shift)| {
             // TODO(Matthias): improve the condition.
             if Some(acc_coeffs.len()) == values.peek().map(|v| v.len()) || acc_coeffs.len() == 0 {
@@ -198,6 +191,7 @@ pub(crate) fn batch_fri_committed_trees<
                 let mut acc_values = acc_coeffs.coset_fft(old_shift.into());
                 // TODO(Matthias): in principle, we can apply all the coset_ifft on value in parallel at the beginning.
                 reverse_index_bits_in_place(&mut acc_values.values);
+                // TODO(Matthias): figure out why we chunk both the coefficients and the values?
                 let chunked_values = acc_values
                     .values
                     .par_chunks(new_arity)
