@@ -27,7 +27,7 @@ use crate::util::timing::TimingTree;
 pub fn batch_fri_proof<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>(
     initial_merkle_trees: &[&FieldMerkleTree<F, C::Hasher>],
     lde_polynomial_coeffs: PolynomialCoeffs<F::Extension>,
-    lde_polynomial_values: &mut [PolynomialValues<F::Extension>],
+    lde_polynomial_values: &[PolynomialValues<F::Extension>],
     challenger: &mut Challenger<F, C::Hasher>,
     fri_params: &FriParams,
     timing: &mut TimingTree,
@@ -105,7 +105,7 @@ pub(crate) fn batch_fri_committed_trees<
             *shift = shift.exp_u64(arity as u64);
             Some(*shift)
         });
-    for (arity_bits, arity, shift) in izip!(&fri_params.reduction_arity_bits, arities, shifts) {
+    for (arity, shift) in izip!(arities, shifts) {
         reverse_index_bits_in_place(&mut final_values.values);
         let chunked_values = final_values.values.par_chunks(arity).map(flatten).collect();
         let tree = MerkleTree::<F, C::Hasher>::new(chunked_values, fri_params.config.cap_height);
@@ -135,7 +135,8 @@ pub(crate) fn batch_fri_committed_trees<
                     .values
                     .iter()
                     .zip(&value.values)
-                    .map(|(&f, &v)| f + v * beta.exp_power_of_2(*arity_bits))
+                    // (beta ^ arity) is one power past the highest power used in `reduced_with_powers` above.
+                    .map(|(&f, &v)| f + v * beta.exp_u64(arity as u64))
                     .collect::<Vec<_>>(),
             );
         }
@@ -315,7 +316,7 @@ mod tests {
         let proof = batch_fri_proof::<F, C, D>(
             &[&polynomial_batch.field_merkle_tree],
             lde_final_poly,
-            &mut [lde_final_values],
+            &[lde_final_values],
             &mut challenger,
             &fri_params,
             &mut timing,
@@ -417,7 +418,7 @@ mod tests {
         let proof = batch_fri_proof::<F, C, D>(
             &[&trace_oracle.field_merkle_tree],
             lde_final_poly_0,
-            &mut [lde_final_values_0, lde_final_values_1, lde_final_values_2],
+            &[lde_final_values_0, lde_final_values_1, lde_final_values_2],
             &mut challenger,
             &fri_params,
             &mut timing,
