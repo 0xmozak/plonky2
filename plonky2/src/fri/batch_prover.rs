@@ -128,17 +128,7 @@ pub(crate) fn batch_fri_committed_trees<
         dbg!(final_values.len());
         if Some(final_values.len()) == values.peek().map(|v| v.len()) {
             let value = values.next().unwrap();
-            // TODO: this should be an operation on PolynomialValues:
-            // final_values + value * beta^arity
-            final_values = PolynomialValues::new(
-                final_values
-                    .values
-                    .iter()
-                    .zip(&value.values)
-                    // (beta ^ arity) is one power past the highest power used in `reduced_with_powers` above.
-                    .map(|(&f, &v)| f + v * beta.exp_u64(arity as u64))
-                    .collect(),
-            );
+            final_values = final_values + value * beta.exp_u64(arity as u64);
         }
         //TODO: optimize the folding process.
         final_coeffs = final_values.clone().coset_ifft(shift.into());
