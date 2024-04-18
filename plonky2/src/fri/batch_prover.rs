@@ -88,6 +88,7 @@ pub(crate) fn batch_fri_committed_trees<
     challenger: &mut Challenger<F, C::Hasher>,
     fri_params: &FriParams,
 ) -> FriCommitedTrees<F, C, D> {
+    dbg!("Enter batch_fri_committed_trees");
     // TODO(Matthias): we can probably do something sensible for zero length values?
     let mut trees = Vec::with_capacity(fri_params.reduction_arity_bits.len());
 
@@ -126,6 +127,7 @@ pub(crate) fn batch_fri_committed_trees<
         // I suspect this is for supporting equal length trees?
         // So bump polynomial_index, if we still have values to fold in?
         // So we consume the next values item here, whenever our length match, and we haven't exhausted the values?
+        dbg!(final_values.len());
         if Some(final_values.len()) == values.peek().map(|v| v.len()) {
             let value = values.next().unwrap();
             final_values = PolynomialValues::new(
