@@ -228,6 +228,7 @@ pub(crate) fn batch_fri_committed_trees<
                     .map(|chunk| reduce_with_powers(chunk, beta))
                     .collect(),
             );
+            // This is the same as adding our new value to the end of the chunk when we do reduce_with_powers.
             beta = beta.exp_u64(new_arity as u64);
             tree
         })
