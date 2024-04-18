@@ -91,7 +91,7 @@ pub(crate) fn batch_fri_committed_trees<
     let mut trees = Vec::with_capacity(fri_params.reduction_arity_bits.len());
 
     let mut values = values.iter().peekable();
-    let mut final_values = values.next().unwrap().clone();
+    let mut final_values: PolynomialValues<F::Extension> = values.next().unwrap().clone();
 
     let arities = fri_params
         .reduction_arity_bits
@@ -117,6 +117,8 @@ pub(crate) fn batch_fri_committed_trees<
         final_coeffs = PolynomialCoeffs::new(
             final_coeffs
                 .coeffs
+                // We are just dropping off the last chunk, if it doesn't fit the arity?
+                // Is thit what we want?  Does this even happen?
                 .par_chunks_exact(arity)
                 .map(|chunk| reduce_with_powers(chunk, beta))
                 .collect::<Vec<_>>(),
@@ -126,12 +128,14 @@ pub(crate) fn batch_fri_committed_trees<
         // So bump polynomial_index, if we still have values to fold in?
         // So we consume the next values item here, whenever our length match, and we haven't exhausted the values?
         dbg!(final_values.len());
+        // Oh, we could also do this at the start of the loop, instead of at the end.
+        // The main problem is having the challenger ready?
         if Some(final_values.len()) == values.peek().map(|v| v.len()) {
-            let value = values.next().unwrap();
-            final_values = final_values + value * beta.exp_u64(arity as u64);
+            let value = values.next().unwrap() * beta.exp_u64(arity as u64);
+            //TODO: optimize the folding process.
+            final_coeffs += &value.clone().coset_ifft(shift.into());
+            final_values += value;
         }
-        //TODO: optimize the folding process.
-        final_coeffs = final_values.clone().coset_ifft(shift.into());
     }
     // Make sure we consumed all values:
     assert_eq!(values.next(), None);

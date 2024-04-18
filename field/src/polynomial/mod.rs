@@ -36,6 +36,13 @@ impl<F: Field> Add<Self> for PolynomialValues<F> {
     }
 }
 
+impl<F: Field> AddAssign<Self> for PolynomialValues<F> {
+    fn add_assign(&mut self, rhs: Self) {
+        assert_eq!(self.len(), rhs.len());
+        izip!(&mut self.values, rhs.values).for_each(|(x, y)| *x += y);
+    }
+}
+
 impl<F: Field> Mul<F> for PolynomialValues<F> {
     type Output = Self;
 
