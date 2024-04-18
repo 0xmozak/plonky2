@@ -198,6 +198,9 @@ pub(crate) fn batch_fri_committed_trees<
     // Can we do this recursively?  Yes, I guess so?
     for (arity, shift) in izip!(arities, shifts) {
         // So, this happens actually at the end of the loop body, sort-of.
+
+        // TODO(Matthias): this doesn't work exactly, because we'd need to use the previous shift.
+        // acc_values = acc_coeffs.coset_fft(shift.into());
         reverse_index_bits_in_place(&mut acc_values.values);
         {
             let chunked_values = acc_values.values.par_chunks(arity).map(flatten).collect();
@@ -211,46 +214,28 @@ pub(crate) fn batch_fri_committed_trees<
         // Can we use a dummy beta of 1 for the dummy start of the loop?
         let beta = challenger.get_extension_challenge::<D>();
         // P(x) = sum_{i<r} x^i * P_i(x^r) becomes sum_{i<r} beta^i * P_i(x).
-        // let chunks = acc_coeffs
-        //     .coeffs
+
         // We are just dropping off the last chunk, if it doesn't fit the arity?
         // Is thit what we want?  Does this even happen?
 
+        let chunks = acc_coeffs.coeffs.par_chunks_exact(arity);
         acc_coeffs = PolynomialCoeffs::new(
             if Some(acc_coeffs.len().div_ceil(arity)) == values.peek().map(|v| v.len()) {
                 // TODO(Matthias): in principle, we can apply all the coset_ifft on value in parallel at the beginning.
                 let coeff = values.next().unwrap().clone().coset_ifft(shift.into());
-                acc_coeffs
-                    .coeffs
-                    .par_chunks_exact(arity)
+                chunks
                     .zip(&coeff.coeffs)
-                    .map(|(chunk, v)| reduce_with_powers(chunk.iter().chain([v]), beta))
+                    .map(|(chunk, v)| chunk.iter().chain([v]))
+                    .map(|chunk| reduce_with_powers(chunk, beta))
                     .collect()
             } else {
-                acc_coeffs
-                    .coeffs
-                    .par_chunks_exact(arity)
+                // TODO(Matthas): remove duplicated logic.
+                chunks
                     .map(|chunk| reduce_with_powers(chunk, beta))
                     .collect()
             },
         );
         // -- here is where we cut the loop?
-        // I suspect this is for supporting equal length trees?
-        // So bump polynomial_index, if we still have values to fold in?
-        // So we consume the next values item here, whenever our length match, and we haven't exhausted the values?
-        // dbg!(final_values.len());
-        // Oh, we could also do this at the start of the loop, instead of at the end.
-        // The main problem is having the challenger ready?
-
-        // Can we use a dummy beta of 1 for the dummy start of the loop?
-        // if Some(acc_coeffs.len()) == values.peek().map(|v| v.len()) {
-        //     let value = values.next().unwrap();
-        //     let value = (value * beta.exp_u64(arity as u64)).coset_ifft(shift.into());
-        //     // let value = values.next().unwrap() *
-        //     //TODO: optimize the folding process.
-        //     // acc_coeffs *= beta;
-        //     acc_coeffs += &value;
-        // }
         acc_values = acc_coeffs.coset_fft(shift.into());
     }
     // Make sure we consumed all values:
