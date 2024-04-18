@@ -24,16 +24,15 @@ use crate::util::timing::TimingTree;
 /// Builds a batch FRI proof.
 pub fn batch_fri_proof<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>(
     initial_merkle_trees: &[&FieldMerkleTree<F, C::Hasher>],
-    lde_polynomial_coeffs: PolynomialCoeffs<F::Extension>,
+    // TODO(Matthias): this corresponds to the first item in lde_polynomial_values
+    // It's silly to treat this special.
     lde_polynomial_values: &[PolynomialValues<F::Extension>],
     challenger: &mut Challenger<F, C::Hasher>,
     fri_params: &FriParams,
     timing: &mut TimingTree,
 ) -> FriProof<F, C::Hasher, D> {
-    let n = lde_polynomial_coeffs.len();
     // We expect a square shape?
     // No, we expect the first lde_polynomial_values to correspond to lde_polynomial_coeffs?
-    assert_eq!(lde_polynomial_values[0].len(), n);
     // The polynomial vectors should be sorted by degree, from largest to smallest, with no duplicate degrees.
     assert!(lde_polynomial_values
         .windows(2)
@@ -43,12 +42,7 @@ pub fn batch_fri_proof<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>,
     let (trees, final_coeffs) = timed!(
         timing,
         "fold codewords in the commitment phase",
-        batch_fri_committed_trees::<F, C, D>(
-            lde_polynomial_coeffs,
-            lde_polynomial_values,
-            challenger,
-            fri_params,
-        )
+        batch_fri_committed_trees::<F, C, D>(lde_polynomial_values, challenger, fri_params,)
     );
 
     // PoW phase
@@ -58,6 +52,7 @@ pub fn batch_fri_proof<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>,
         fri_proof_of_work::<F, C, D>(challenger, &fri_params.config)
     );
 
+    let n = lde_polynomial_values[0].len();
     // Query phase
     let query_round_proofs = batch_fri_prover_query_rounds::<F, C, D>(
         initial_merkle_trees,
@@ -80,9 +75,6 @@ pub(crate) fn batch_fri_committed_trees<
     C: GenericConfig<D, F = F>,
     const D: usize,
 >(
-    // OK, this is something we get as an input, but we don't return it?
-    // Oh, we do return it after fiddling with it.
-    mut final_coeffs: PolynomialCoeffs<F::Extension>,
     values: &[PolynomialValues<F::Extension>],
     // TODO(Matthias): see about parallelising!
     challenger: &mut Challenger<F, C::Hasher>,
@@ -94,6 +86,8 @@ pub(crate) fn batch_fri_committed_trees<
 
     let mut values = values.iter().peekable();
     let mut final_values: PolynomialValues<F::Extension> = values.next().unwrap().clone();
+    let mut final_coeffs: PolynomialCoeffs<F::Extension> =
+        final_values.clone().coset_ifft(F::coset_shift().into());
 
     let arities = fri_params
         .reduction_arity_bits
@@ -101,7 +95,7 @@ pub(crate) fn batch_fri_committed_trees<
         .map(|&arity_bits| 1_usize << arity_bits);
     let shifts = arities
         .clone()
-        .scan(F::MULTIPLICATIVE_GROUP_GENERATOR, |shift: &mut F, arity| {
+        .scan(F::coset_shift(), |shift: &mut F, arity| {
             *shift = shift.exp_u64(arity as u64);
             Some(*shift)
         });
@@ -329,7 +323,6 @@ mod tests {
 
         let proof = batch_fri_proof::<F, C, D>(
             &[&polynomial_batch.field_merkle_tree],
-            lde_final_poly,
             &[lde_final_values],
             &mut challenger,
             &fri_params,
@@ -431,7 +424,6 @@ mod tests {
 
         let proof = batch_fri_proof::<F, C, D>(
             &[&trace_oracle.field_merkle_tree],
-            lde_final_poly_0,
             &[lde_final_values_0, lde_final_values_1, lde_final_values_2],
             &mut challenger,
             &fri_params,
