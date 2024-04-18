@@ -206,8 +206,7 @@ fn batch_fri_prover_query_round<
             )
         })
         .collect::<Vec<_>>();
-    for (i, tree) in trees.iter().enumerate() {
-        let arity_bits = fri_params.reduction_arity_bits[i];
+    for (arity_bits, tree) in izip!(&fri_params.reduction_arity_bits, trees) {
         let evals = unflatten(tree.get(x_index >> arity_bits));
         let merkle_proof = tree.prove(x_index >> arity_bits);
 
