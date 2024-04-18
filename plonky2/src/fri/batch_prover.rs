@@ -1,7 +1,8 @@
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
+use core::iter::once;
 
-use itertools::izip;
+use itertools::{chain, izip, Itertools};
 use plonky2_field::extension::flatten;
 use plonky2_field::types::Field;
 use plonky2_maybe_rayon::*;
@@ -70,7 +71,90 @@ pub fn batch_fri_proof<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>,
     }
 }
 
+#[allow(dead_code)]
 pub(crate) fn batch_fri_committed_trees<
+    F: RichField + Extendable<D>,
+    C: GenericConfig<D, F = F>,
+    const D: usize,
+>(
+    values: &[PolynomialValues<F::Extension>],
+    // TODO(Matthias): see about parallelising!
+    #[allow(unused_variables)] challenger: &mut Challenger<F, C::Hasher>,
+    fri_params: &FriParams,
+) -> FriCommitedTrees<F, C, D> {
+    if values.is_empty() {
+        return (Vec::new(), PolynomialCoeffs::empty());
+    }
+    assert!(!values.is_empty());
+    // First, create the plan for how our sizes will shrink.
+    // let mut trees = Vec::with_capacity(fri_params.reduction_arity_bits.len());
+    let arities = chain!(once(&0_usize), &fri_params.reduction_arity_bits)
+        .map(|&arity_bits| 1_usize << arity_bits);
+    let shifts = arities
+        .clone()
+        // This is very similar to 'F::powers', but with some jumps.
+        .scan(F::coset_shift(), |shift: &mut F, arity| {
+            *shift = shift.exp_u64(arity as u64);
+            Some(*shift)
+        });
+    let lengths = arities.clone().scan(values[0].len(), |len, arity| {
+        // TODO(Matthias): not sure whether we actually support non-divisible lengths?  I'm just matching what Sai did.
+        *len = len.div_ceil(arity);
+        // TODO(Matthias): see if we need the next arity, or just current arity?
+        Some(*len)
+    });
+    let merged = values.iter().merge_join_by(
+        izip!(lengths, arities.skip(1), shifts.skip(1)),
+        |v, (len, _, _)| v.len().cmp(len),
+    );
+    let mut acc_coeffs: PolynomialCoeffs<<F as Extendable<D>>::Extension> =
+        PolynomialCoeffs::empty();
+    let trees = merged
+        .scan(
+            (&mut acc_coeffs, F::Extension::ONE),
+            |(acc_coeffs, beta), eob| {
+                let (_len, arity, shift): (_, _, F) = *eob.as_ref().right().unwrap();
+                if let Some(v) = eob.left() {
+                    **acc_coeffs += (v * *beta).coset_ifft(F::Extension::from(shift));
+                }
+                let mut acc_values = acc_coeffs.coset_fft(F::coset_shift().into());
+                // Start of the original loop? Yes.
+                // OK, now we need the next arity?
+                reverse_index_bits_in_place(&mut acc_values.values);
+
+                let tree = MerkleTree::<F, C::Hasher>::new(
+                    acc_values.values.par_chunks(arity).map(flatten).collect(),
+                    fri_params.config.cap_height,
+                );
+
+                challenger.observe_cap(&tree.cap);
+
+                *beta = challenger.get_extension_challenge::<D>();
+                **acc_coeffs = PolynomialCoeffs::new(
+                    acc_coeffs
+                        .coeffs
+                        // We are just dropping off the last chunk, if it doesn't fit the arity?
+                        // Is thit what we want?  Does this even happen?
+                        .par_chunks_exact(arity)
+                        .map(|chunk| reduce_with_powers(chunk, *beta))
+                        .collect(),
+                );
+                *beta = beta.exp_u64(arity as u64);
+                // let chunked_values = values.values.par_chunks(arity).map(flatten).collect();
+                // let tree = MerkleTree::<F, C::Hasher>::new(chunked_values, fri_params.config.cap_height);
+                // *state = Some(tree);
+                // Some(tree)
+                Some(tree)
+            },
+        )
+        // .skip(1)
+        .collect::<Vec<_>>();
+
+    assert_eq!(trees.len(), fri_params.reduction_arity_bits.len());
+    (trees, acc_coeffs)
+}
+
+pub(crate) fn batch_fri_committed_trees_<
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
     const D: usize,
@@ -80,6 +164,8 @@ pub(crate) fn batch_fri_committed_trees<
     challenger: &mut Challenger<F, C::Hasher>,
     fri_params: &FriParams,
 ) -> FriCommitedTrees<F, C, D> {
+    // First, create the plan for how our sizes will shrink.
+
     // dbg!("Enter batch_fri_committed_trees");
     // TODO(Matthias): we can probably do something sensible for zero length values?
     let mut trees = Vec::with_capacity(fri_params.reduction_arity_bits.len());
@@ -93,6 +179,8 @@ pub(crate) fn batch_fri_committed_trees<
         .reduction_arity_bits
         .iter()
         .map(|&arity_bits| 1_usize << arity_bits);
+    // We need an 'artificial' zeroth shift, that we get from a zero arity, -ish.
+    // Or do we?
     let shifts = arities
         .clone()
         // This is very similar to 'F::powers', but with some jumps.
@@ -108,6 +196,7 @@ pub(crate) fn batch_fri_committed_trees<
     //      Inner loop: reduce until we can fold in the next value.
     // Can we do this recursively?  Yes, I guess so?
     for (arity, shift) in izip!(arities, shifts) {
+        // So, this happens actually at the end of the loop body, sort-of.
         reverse_index_bits_in_place(&mut acc_values.values);
         {
             let chunked_values = acc_values.values.par_chunks(arity).map(flatten).collect();
@@ -118,6 +207,7 @@ pub(crate) fn batch_fri_committed_trees<
             trees.push(tree);
         }
 
+        // Can we use a dummy beta of 1 for the dummy start of the loop?
         let beta = challenger.get_extension_challenge::<D>();
         // P(x) = sum_{i<r} x^i * P_i(x^r) becomes sum_{i<r} beta^i * P_i(x).
         acc_coeffs = PolynomialCoeffs::new(
@@ -129,6 +219,7 @@ pub(crate) fn batch_fri_committed_trees<
                 .map(|chunk| reduce_with_powers(chunk, beta))
                 .collect(),
         );
+        // -- here is where we cut the loop?
         acc_values = acc_coeffs.coset_fft(shift.into());
         // I suspect this is for supporting equal length trees?
         // So bump polynomial_index, if we still have values to fold in?
@@ -136,6 +227,8 @@ pub(crate) fn batch_fri_committed_trees<
         // dbg!(final_values.len());
         // Oh, we could also do this at the start of the loop, instead of at the end.
         // The main problem is having the challenger ready?
+
+        // Can we use a dummy beta of 1 for the dummy start of the loop?
         if Some(acc_values.len()) == values.peek().map(|v| v.len()) {
             let value = values.next().unwrap() * beta.exp_u64(arity as u64);
             //TODO: optimize the folding process.
@@ -250,7 +343,6 @@ mod tests {
     use alloc::vec;
 
     use anyhow::Result;
-    use itertools::Itertools;
     use plonky2_field::goldilocks_field::GoldilocksField;
     use plonky2_field::types::{Field64, Sample};
 
