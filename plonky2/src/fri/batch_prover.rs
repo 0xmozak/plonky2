@@ -189,7 +189,7 @@ fn batch_fri_prover_query_round<
 >(
     initial_merkle_trees: &[&FieldMerkleTree<F, C::Hasher>],
     trees: &[MerkleTree<F, C::Hasher>],
-    mut x_index: usize,
+    x_index: usize,
     fri_params: &FriParams,
 ) -> FriQueryRound<F, C::Hasher, D> {
     let mut query_steps = Vec::new();
@@ -206,16 +206,21 @@ fn batch_fri_prover_query_round<
             )
         })
         .collect::<Vec<_>>();
-    for (arity_bits, tree) in izip!(&fri_params.reduction_arity_bits, trees) {
-        let evals = unflatten(tree.get(x_index >> arity_bits));
-        let merkle_proof = tree.prove(x_index >> arity_bits);
+    let x_indices = fri_params
+        .reduction_arity_bits
+        .iter()
+        .scan(x_index, |x_index, &arity_bits| {
+            *x_index >>= arity_bits;
+            Some(*x_index)
+        });
+    for (tree, x_index) in izip!(trees, x_indices) {
+        let evals = unflatten(tree.get(x_index));
+        let merkle_proof = tree.prove(x_index);
 
         query_steps.push(FriQueryStep {
             evals,
             merkle_proof,
         });
-
-        x_index >>= arity_bits;
     }
     FriQueryRound {
         initial_trees_proof: FriInitialTreeProof {
