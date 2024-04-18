@@ -31,6 +31,8 @@ pub fn batch_fri_proof<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>,
     timing: &mut TimingTree,
 ) -> FriProof<F, C::Hasher, D> {
     let n = lde_polynomial_coeffs.len();
+    // We expect a square shape?
+    // No, we expect the first lde_polynomial_values to correspond to lde_polynomial_coeffs?
     assert_eq!(lde_polynomial_values[0].len(), n);
     // The polynomial vectors should be sorted by degree, from largest to smallest, with no duplicate degrees.
     assert!(lde_polynomial_values
@@ -86,7 +88,7 @@ pub(crate) fn batch_fri_committed_trees<
     challenger: &mut Challenger<F, C::Hasher>,
     fri_params: &FriParams,
 ) -> FriCommitedTrees<F, C, D> {
-    dbg!("Enter batch_fri_committed_trees");
+    // dbg!("Enter batch_fri_committed_trees");
     // TODO(Matthias): we can probably do something sensible for zero length values?
     let mut trees = Vec::with_capacity(fri_params.reduction_arity_bits.len());
 
@@ -127,7 +129,7 @@ pub(crate) fn batch_fri_committed_trees<
         // I suspect this is for supporting equal length trees?
         // So bump polynomial_index, if we still have values to fold in?
         // So we consume the next values item here, whenever our length match, and we haven't exhausted the values?
-        dbg!(final_values.len());
+        // dbg!(final_values.len());
         // Oh, we could also do this at the start of the loop, instead of at the end.
         // The main problem is having the challenger ready?
         if Some(final_values.len()) == values.peek().map(|v| v.len()) {
