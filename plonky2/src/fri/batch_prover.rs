@@ -223,14 +223,9 @@ fn make_steps<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D:
             Some(*x_index)
         });
     izip!(trees, x_indices)
-        .map(|(tree, x_index)| {
-            let evals = unflatten(tree.get(x_index));
-            let merkle_proof = tree.prove(x_index);
-
-            FriQueryStep {
-                evals,
-                merkle_proof,
-            }
+        .map(|(tree, x_index)| FriQueryStep {
+            evals: unflatten(tree.get(x_index)),
+            merkle_proof: tree.prove(x_index),
         })
         .collect::<Vec<_>>()
 }
