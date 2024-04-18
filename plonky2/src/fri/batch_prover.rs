@@ -211,14 +211,28 @@ pub(crate) fn batch_fri_committed_trees<
         // Can we use a dummy beta of 1 for the dummy start of the loop?
         let beta = challenger.get_extension_challenge::<D>();
         // P(x) = sum_{i<r} x^i * P_i(x^r) becomes sum_{i<r} beta^i * P_i(x).
+        // let chunks = acc_coeffs
+        //     .coeffs
+        // We are just dropping off the last chunk, if it doesn't fit the arity?
+        // Is thit what we want?  Does this even happen?
+
         acc_coeffs = PolynomialCoeffs::new(
-            acc_coeffs
-                .coeffs
-                // We are just dropping off the last chunk, if it doesn't fit the arity?
-                // Is thit what we want?  Does this even happen?
-                .par_chunks_exact(arity)
-                .map(|chunk| reduce_with_powers(chunk, beta))
-                .collect(),
+            if Some(acc_coeffs.len().div_ceil(arity)) == values.peek().map(|v| v.len()) {
+                // TODO(Matthias): in principle, we can apply all the coset_ifft on value in parallel at the beginning.
+                let coeff = values.next().unwrap().clone().coset_ifft(shift.into());
+                acc_coeffs
+                    .coeffs
+                    .par_chunks_exact(arity)
+                    .zip(&coeff.coeffs)
+                    .map(|(chunk, v)| reduce_with_powers(chunk.iter().chain([v]), beta))
+                    .collect()
+            } else {
+                acc_coeffs
+                    .coeffs
+                    .par_chunks_exact(arity)
+                    .map(|chunk| reduce_with_powers(chunk, beta))
+                    .collect()
+            },
         );
         // -- here is where we cut the loop?
         // I suspect this is for supporting equal length trees?
@@ -229,11 +243,14 @@ pub(crate) fn batch_fri_committed_trees<
         // The main problem is having the challenger ready?
 
         // Can we use a dummy beta of 1 for the dummy start of the loop?
-        if Some(acc_coeffs.len()) == values.peek().map(|v| v.len()) {
-            let value = values.next().unwrap() * beta.exp_u64(arity as u64);
-            //TODO: optimize the folding process.
-            acc_coeffs += &value.clone().coset_ifft(shift.into());
-        }
+        // if Some(acc_coeffs.len()) == values.peek().map(|v| v.len()) {
+        //     let value = values.next().unwrap();
+        //     let value = (value * beta.exp_u64(arity as u64)).coset_ifft(shift.into());
+        //     // let value = values.next().unwrap() *
+        //     //TODO: optimize the folding process.
+        //     // acc_coeffs *= beta;
+        //     acc_coeffs += &value;
+        // }
         acc_values = acc_coeffs.coset_fft(shift.into());
     }
     // Make sure we consumed all values:

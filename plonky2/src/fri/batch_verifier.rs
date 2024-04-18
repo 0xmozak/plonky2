@@ -197,6 +197,7 @@ fn batch_fri_verifier_query_round<
         let x_index_within_coset = x_index & (arity - 1);
 
         // Check consistency with our old evaluation from the previous round.
+        // need to multiply wit beta.
         ensure!(evals[x_index_within_coset] == old_eval);
 
         old_eval = compute_evaluation(
