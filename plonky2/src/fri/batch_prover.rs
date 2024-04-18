@@ -137,7 +137,7 @@ pub(crate) fn batch_fri_committed_trees<
                     .zip(&value.values)
                     // (beta ^ arity) is one power past the highest power used in `reduced_with_powers` above.
                     .map(|(&f, &v)| f + v * beta.exp_u64(arity as u64))
-                    .collect::<Vec<_>>(),
+                    .collect(),
             );
         }
         //TODO: optimize the folding process.
