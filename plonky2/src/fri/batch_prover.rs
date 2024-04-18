@@ -182,6 +182,57 @@ fn batch_fri_prover_query_rounds<
         .collect()
 }
 
+fn make_initial_trees_proof<
+    F: RichField + Extendable<D>,
+    C: GenericConfig<D, F = F>,
+    const D: usize,
+>(
+    initial_merkle_trees: &[&FieldMerkleTree<F, C::Hasher>],
+    x_index: usize,
+) -> FriInitialTreeProof<F, C::Hasher> {
+    FriInitialTreeProof {
+        evals_proofs: initial_merkle_trees
+            .iter()
+            .map(|t| {
+                (
+                    t.values(x_index)
+                        .iter()
+                        .flatten()
+                        .cloned()
+                        .collect::<Vec<_>>(),
+                    t.open_batch(x_index),
+                )
+            })
+            .collect(),
+    }
+}
+
+fn make_steps<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>(
+    trees: &[MerkleTree<F, C::Hasher>],
+    x_index: usize,
+    fri_params: &FriParams,
+) -> Vec<FriQueryStep<F, C::Hasher, D>> {
+    // TODO(Matthias): Right shifting the index goes up in the tree?
+    let x_indices = fri_params
+        .reduction_arity_bits
+        .iter()
+        .scan(x_index, |x_index, &arity_bits| {
+            *x_index >>= arity_bits;
+            Some(*x_index)
+        });
+    izip!(trees, x_indices)
+        .map(|(tree, x_index)| {
+            let evals = unflatten(tree.get(x_index));
+            let merkle_proof = tree.prove(x_index);
+
+            FriQueryStep {
+                evals,
+                merkle_proof,
+            }
+        })
+        .collect::<Vec<_>>()
+}
+
 fn batch_fri_prover_query_round<
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
@@ -192,42 +243,9 @@ fn batch_fri_prover_query_round<
     x_index: usize,
     fri_params: &FriParams,
 ) -> FriQueryRound<F, C::Hasher, D> {
-    let initial_proof = initial_merkle_trees
-        .iter()
-        .map(|t| {
-            (
-                t.values(x_index)
-                    .iter()
-                    .flatten()
-                    .cloned()
-                    .collect::<Vec<_>>(),
-                t.open_batch(x_index),
-            )
-        })
-        .collect::<Vec<_>>();
-    let x_indices = fri_params
-        .reduction_arity_bits
-        .iter()
-        .scan(x_index, |x_index, &arity_bits| {
-            *x_index >>= arity_bits;
-            Some(*x_index)
-        });
-    let query_steps = izip!(trees, x_indices)
-        .map(|(tree, x_index)| {
-            let evals = unflatten(tree.get(x_index));
-            let merkle_proof = tree.prove(x_index);
-
-            FriQueryStep {
-                evals,
-                merkle_proof,
-            }
-        })
-        .collect::<Vec<_>>();
     FriQueryRound {
-        initial_trees_proof: FriInitialTreeProof {
-            evals_proofs: initial_proof,
-        },
-        steps: query_steps,
+        initial_trees_proof: make_initial_trees_proof::<F, C, D>(initial_merkle_trees, x_index),
+        steps: make_steps::<F, C, D>(trees, x_index, fri_params),
     }
 }
 
