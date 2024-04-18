@@ -96,7 +96,7 @@ pub(crate) fn batch_fri_committed_trees<
     let arities = fri_params
         .reduction_arity_bits
         .iter()
-        .map(|&arity_bits| 1 << arity_bits);
+        .map(|&arity_bits| 1_usize << arity_bits);
     let shifts = arities
         .clone()
         .scan(F::MULTIPLICATIVE_GROUP_GENERATOR, |shift: &mut F, arity| {
