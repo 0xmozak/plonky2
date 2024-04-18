@@ -28,7 +28,7 @@ impl<F: Field> Add<Self> for PolynomialValues<F> {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
-        assert_eq!(self.len(), rhs.len());
+        debug_assert_eq!(self.len(), rhs.len());
         izip!(self.values, rhs.values)
             .map(|(x, y)| x + y)
             .collect::<Vec<_>>()
