@@ -116,6 +116,7 @@ where
             let arity = 1 << arity_bits;
             codeword_len_bits -= arity_bits;
 
+            assert_eq!(evals.len(), arity);
             ensure!(evals.len() == arity);
             ensure!(merkle_proof.len() + cap_height == codeword_len_bits);
         }
