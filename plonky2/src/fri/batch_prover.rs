@@ -85,9 +85,9 @@ pub(crate) fn batch_fri_committed_trees<
     let mut trees = Vec::with_capacity(fri_params.reduction_arity_bits.len());
 
     let mut values = values.iter().peekable();
-    let mut final_values: PolynomialValues<F::Extension> = values.next().unwrap().clone();
-    let mut final_coeffs: PolynomialCoeffs<F::Extension> =
-        final_values.clone().coset_ifft(F::coset_shift().into());
+    let mut acc_values: PolynomialValues<F::Extension> = values.next().unwrap().clone();
+    let mut acc_coeffs: PolynomialCoeffs<F::Extension> =
+        acc_values.clone().coset_ifft(F::coset_shift().into());
 
     let arities = fri_params
         .reduction_arity_bits
@@ -95,55 +95,65 @@ pub(crate) fn batch_fri_committed_trees<
         .map(|&arity_bits| 1_usize << arity_bits);
     let shifts = arities
         .clone()
+        // This is very similar to 'F::powers', but with some jumps.
         .scan(F::coset_shift(), |shift: &mut F, arity| {
             *shift = shift.exp_u64(arity as u64);
             Some(*shift)
         });
+    // So we take from values one by one, and feed into the final_values and final_coeffs.
+    // We reduce final_coeefs and final_values, until we get another set of values to fold in.
+    // We actually know that ahead of time.
+    // We consume arities and shifts while doing so.
+    // Outer loop: get a new value.
+    //      Inner loop: reduce until we can fold in the next value.
+    // Can we do this recursively?  Yes, I guess so?
     for (arity, shift) in izip!(arities, shifts) {
-        reverse_index_bits_in_place(&mut final_values.values);
-        let chunked_values = final_values.values.par_chunks(arity).map(flatten).collect();
-        let tree = MerkleTree::<F, C::Hasher>::new(chunked_values, fri_params.config.cap_height);
-        // dbg!(final_values);
+        reverse_index_bits_in_place(&mut acc_values.values);
+        {
+            let chunked_values = acc_values.values.par_chunks(arity).map(flatten).collect();
+            let tree =
+                MerkleTree::<F, C::Hasher>::new(chunked_values, fri_params.config.cap_height);
 
-        challenger.observe_cap(&tree.cap);
-        trees.push(tree);
+            challenger.observe_cap(&tree.cap);
+            trees.push(tree);
+        }
 
         let beta = challenger.get_extension_challenge::<D>();
         // P(x) = sum_{i<r} x^i * P_i(x^r) becomes sum_{i<r} beta^i * P_i(x).
-        final_coeffs = PolynomialCoeffs::new(
-            final_coeffs
+        acc_coeffs = PolynomialCoeffs::new(
+            acc_coeffs
                 .coeffs
                 // We are just dropping off the last chunk, if it doesn't fit the arity?
                 // Is thit what we want?  Does this even happen?
                 .par_chunks_exact(arity)
                 .map(|chunk| reduce_with_powers(chunk, beta))
-                .collect::<Vec<_>>(),
+                .collect(),
         );
-        final_values = final_coeffs.coset_fft(shift.into());
+        acc_values = acc_coeffs.coset_fft(shift.into());
         // I suspect this is for supporting equal length trees?
         // So bump polynomial_index, if we still have values to fold in?
         // So we consume the next values item here, whenever our length match, and we haven't exhausted the values?
         // dbg!(final_values.len());
         // Oh, we could also do this at the start of the loop, instead of at the end.
         // The main problem is having the challenger ready?
-        if Some(final_values.len()) == values.peek().map(|v| v.len()) {
+        if Some(acc_values.len()) == values.peek().map(|v| v.len()) {
             let value = values.next().unwrap() * beta.exp_u64(arity as u64);
             //TODO: optimize the folding process.
-            final_coeffs += &value.clone().coset_ifft(shift.into());
-            final_values += value;
+            acc_coeffs += &value.clone().coset_ifft(shift.into());
+            acc_values += value;
         }
     }
     // Make sure we consumed all values:
     assert_eq!(values.next(), None);
 
     // The coefficients being removed here should always be zero.
-    final_coeffs
+    acc_coeffs
         .coeffs
-        .truncate(final_coeffs.len() >> fri_params.config.rate_bits);
+        .truncate(acc_coeffs.len() >> fri_params.config.rate_bits);
 
-    challenger.observe_extension_elements(&final_coeffs.coeffs);
+    challenger.observe_extension_elements(&acc_coeffs.coeffs);
     assert_eq!(fri_params.reduction_arity_bits.len(), trees.len());
-    (trees, final_coeffs)
+    (trees, acc_coeffs)
 }
 
 fn batch_fri_prover_query_rounds<
