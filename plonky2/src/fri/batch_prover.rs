@@ -1,5 +1,6 @@
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
+// use core::cmp::Reverse;
 use core::iter::once;
 
 use itertools::{chain, izip, Itertools};
@@ -72,7 +73,7 @@ pub fn batch_fri_proof<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>,
 }
 
 #[allow(dead_code)]
-pub(crate) fn batch_fri_committed_trees<
+pub(crate) fn batch_fri_committed_trees_<
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
     const D: usize,
@@ -105,7 +106,7 @@ pub(crate) fn batch_fri_committed_trees<
     });
     let merged = values.iter().merge_join_by(
         izip!(lengths, arities.skip(1), shifts.skip(1)),
-        |v, (len, _, _)| v.len().cmp(len),
+        |v, (len, _, _)| len.cmp(&v.len()),
     );
     let mut acc_coeffs: PolynomialCoeffs<<F as Extendable<D>>::Extension> =
         PolynomialCoeffs::empty();
@@ -154,7 +155,7 @@ pub(crate) fn batch_fri_committed_trees<
     (trees, acc_coeffs)
 }
 
-pub(crate) fn batch_fri_committed_trees_<
+pub(crate) fn batch_fri_committed_trees<
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
     const D: usize,
