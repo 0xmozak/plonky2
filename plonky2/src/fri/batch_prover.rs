@@ -130,6 +130,8 @@ pub(crate) fn batch_fri_committed_trees<
         dbg!(final_values.len());
         if Some(final_values.len()) == values.peek().map(|v| v.len()) {
             let value = values.next().unwrap();
+            // TODO: this should be an operation on PolynomialValues:
+            // final_values + value * beta^arity
             final_values = PolynomialValues::new(
                 final_values
                     .values
