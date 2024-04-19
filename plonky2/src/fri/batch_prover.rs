@@ -98,57 +98,6 @@ pub(crate) fn batch_fri_committed_trees<
             Some(old_shift)
         });
     let mut values = values.iter().peekable();
-    let padded_values: Vec<Option<_>> = {
-        let initial_length = values.peek().map(|v| v.len()).unwrap_or_default();
-        let lengths = arities.clone().scan(initial_length, |len, arity| {
-            *len = len.div_ceil(arity);
-            Some(*len)
-        });
-
-        lengths.merge_join_by(values, |len, v| Reverse(len.cmp(&v.len()))).collect();
-        todo!()
-        // arities.clone().scan(initial_length, |len, arity| {
-        //     let old_len = len;
-        //     *len = len.div_ceil(arity);
-
-        //     match values.peek().map(|v| v.len()) {
-        //         (None, None) => return None,
-        //         (None, Some(len)) => {
-        //             *prev_len = Some(len.div_ceil(arity));
-        //             values.next()
-        //         }
-        //         (Some(prev_len), Some(len)) => {
-        //             if prev_len == len {
-
-        //                 values.next()
-        //             } else
-        //             if prev_len % arity == 0 {
-        //                 *prev_len = Some(len.div_ceil(arity));
-        //                 values.next()
-        //             } else {
-        //                 *prev_len = Some(len.div_ceil(arity));
-        //                 Some(PolynomialValues::new(vec![F::Extension::ZERO; len]))
-        //             }
-        //         }
-        //     }
-            // values.peek().map(|v| v.len());
-            // let len = values.peek().map(|v| v.len()).unwrap_or(0);
-            // let padded = if len % arity == 0 {
-            //     None
-            // } else {
-            //     Some(len % arity)
-            // };
-            // *prev_len = Some(len);
-            // Some(padded)
-        // }).collect()
-    };
-    
-    //     let lengths = arities.clone().scan(values[0].len(), |len, arity| {
-    //     // TODO(Matthias): not sure whether we actually support non-divisible lengths?  I'm just matching what Sai did.
-    //     *len = len.div_ceil(arity);
-    //     // TODO(Matthias): see if we need the next arity, or just current arity?
-    //     Some(*len)
-    // });
     let trees = izip!(arities, shifts)
         .map(|(arity, old_shift)| {
             // TODO(Matthias): improve the condition.
