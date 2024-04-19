@@ -1,7 +1,7 @@
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 // use core::cmp::Reverse;
-use core::iter::{once, Peekable};
+use core::iter::once;
 
 use itertools::{chain, izip, Itertools};
 use plonky2_field::extension::flatten;
@@ -140,7 +140,7 @@ pub(crate) fn batch_fri_committed_trees_<
                         .map(|chunk| reduce_with_powers(chunk, *beta))
                         .collect(),
                 );
-                // *beta = beta.exp_u64(arity as u64);
+                *beta = beta.exp_u64(arity as u64);
                 // let chunked_values = values.values.par_chunks(arity).map(flatten).collect();
                 // let tree = MerkleTree::<F, C::Hasher>::new(chunked_values, fri_params.config.cap_height);
                 // *state = Some(tree);
@@ -153,67 +153,6 @@ pub(crate) fn batch_fri_committed_trees_<
 
     assert_eq!(trees.len(), fri_params.reduction_arity_bits.len());
     (trees, acc_coeffs)
-}
-
-pub(crate) fn chunk_and_fold<'a, F: RichField + Extendable<D>, const D: usize>(
-    arity: usize,
-    acc_coeffs: &mut PolynomialCoeffs<F::Extension>,
-    beta: F::Extension,
-    shift: F,
-    values: &mut Peekable<impl Iterator<Item = &'a PolynomialValues<F::Extension>>>,
-) {
-    if acc_coeffs.len() == 0 && values.peek().is_none() {
-        // &mut acc_coeffs
-    } else if acc_coeffs.len() == 0 && values.peek().is_some() {
-        // We could also zip with empty chunks here.
-        *acc_coeffs = &values
-            .next()
-            .unwrap()
-            .clone()
-            .coset_ifft(shift.into())
-            * beta;
-    } else if Some(acc_coeffs.len().div_ceil(arity)) == values.peek().map(|v| v.len()) {
-        let coeffs = values
-            .next()
-            .unwrap()
-            .clone()
-            .coset_ifft(shift.into())
-            .coeffs;
-        *acc_coeffs = PolynomialCoeffs::new(
-            // TODO(Matthas): remove duplicated logic.
-            acc_coeffs
-                .coeffs
-                .par_chunks_exact(arity)
-                .zip(&coeffs)
-                .map(|(chunk, value)| chain!(chunk.iter(), [value]))
-                .map(|chunk| reduce_with_powers(chunk, beta))
-                .collect(),
-        );
-    } else {
-        // We could also chain with empty value here.
-        *acc_coeffs = PolynomialCoeffs::new(
-            // TODO(Matthas): remove duplicated logic.
-            acc_coeffs
-                .coeffs
-                .par_chunks_exact(arity)
-                .map(|chunk| reduce_with_powers(chunk, beta))
-                .collect(),
-        );
-    };
-
-    // if Some(acc_coeffs.len()) == values.peek().map(|v| v.len()) || acc_coeffs.len() == 0 {
-    //     acc_coeffs += &values.next().unwrap().clone().coset_ifft(shift.into()) * beta;
-    // }
-
-    // acc_coeffs = PolynomialCoeffs::new(
-    //     // TODO(Matthas): remove duplicated logic.
-    //     acc_coeffs
-    //         .coeffs
-    //         .par_chunks_exact(arity)
-    //         .map(|chunk| reduce_with_powers(chunk, beta))
-    //         .collect(),
-    // );
-    // todo!()
 }
 
 pub(crate) fn batch_fri_committed_trees<
@@ -229,25 +168,25 @@ pub(crate) fn batch_fri_committed_trees<
     let mut values = values.iter().peekable();
     let mut acc_coeffs: PolynomialCoeffs<F::Extension> = PolynomialCoeffs::empty();
 
-    let arities = once(&0).chain(&fri_params
-        .reduction_arity_bits)
+    let arities = fri_params
+        .reduction_arity_bits
+        .iter()
         .map(|&arity_bits| 1_usize << arity_bits);
     let shifts = arities
         .clone()
         // This is very similar to 'F::powers', but with some jumps.
         .scan(F::coset_shift(), |shift: &mut F, arity| {
-            // let old_shift = *shift;
+            let old_shift = *shift;
             *shift = shift.exp_u64(arity as u64);
-            Some(*shift)
+            Some(old_shift)
         });
     let mut beta = F::Extension::ONE;
-    let trees = izip!(arities, shifts.clone(), shifts.skip(1))
-        .map(|(arity, old_shift, new_shift)| {
+    let trees = izip!(arities, shifts)
+        .map(|(new_arity, old_shift)| {
             // TODO(Matthias): improve the condition.
-            chunk_and_fold::<F, D>(arity, &mut acc_coeffs, beta, old_shift, &mut values);
-            // if Some(acc_coeffs.len()) == values.peek().map(|v| v.len()) || acc_coeffs.len() == 0 {
-            //     acc_coeffs += &values.next().unwrap().clone().coset_ifft(shift.into()) * beta;
-            // }
+            if Some(acc_coeffs.len()) == values.peek().map(|v| v.len()) || acc_coeffs.len() == 0 {
+                acc_coeffs += &values.next().unwrap().clone().coset_ifft(old_shift.into()) * beta;
+            }
             let tree = {
                 let mut acc_values = acc_coeffs.coset_fft(old_shift.into());
                 // TODO(Matthias): in principle, we can apply all the coset_ifft on value in parallel at the beginning.
@@ -255,7 +194,7 @@ pub(crate) fn batch_fri_committed_trees<
                 // TODO(Matthias): figure out why we chunk both the coefficients and the values?
                 let chunked_values = acc_values
                     .values
-                    .par_chunks(arity)
+                    .par_chunks(new_arity)
                     .map(flatten)
                     .collect();
 
@@ -267,17 +206,17 @@ pub(crate) fn batch_fri_committed_trees<
             beta = challenger.get_extension_challenge::<D>();
             // P(x) = sum_{i<r} x^i * P_i(x^r) becomes sum_{i<r} beta^i * P_i(x).
 
-            // // TODO(Matthias): properly formulated, this can go to the start of the loop.
-            // acc_coeffs = PolynomialCoeffs::new(
-            //     // TODO(Matthas): remove duplicated logic.
-            //     acc_coeffs
-            //         .coeffs
-            //         .par_chunks_exact(arity)
-            //         .map(|chunk| reduce_with_powers(chunk, beta))
-            //         .collect(),
-            // );
-            // // This is the same as adding our new value to the end of the chunk when we do reduce_with_powers.
-            // beta = beta.exp_u64(arity as u64);
+            // TODO(Matthias): properly formulated, this can go to the start of the loop.
+            acc_coeffs = PolynomialCoeffs::new(
+                // TODO(Matthas): remove duplicated logic.
+                acc_coeffs
+                    .coeffs
+                    .par_chunks_exact(new_arity)
+                    .map(|chunk| reduce_with_powers(chunk, beta))
+                    .collect(),
+            );
+            // This is the same as adding our new value to the end of the chunk when we do reduce_with_powers.
+            beta = beta.exp_u64(new_arity as u64);
             tree
         })
         .collect();
