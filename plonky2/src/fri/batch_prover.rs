@@ -115,7 +115,7 @@ pub(crate) fn batch_fri_committed_trees<
                     .values
                     .iter()
                     .zip(&values[polynomial_index].values)
-                    .map(|(&f, &v)| f + v * beta.exp_power_of_2(*arity_bits))
+                    .map(|(&f, &v)| f * beta + v)
                     .collect::<Vec<_>>(),
             );
             polynomial_index += 1;
