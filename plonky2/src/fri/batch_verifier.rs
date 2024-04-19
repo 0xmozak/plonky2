@@ -198,6 +198,11 @@ fn batch_fri_verifier_query_round<
 
         // Check consistency with our old evaluation from the previous round.
         // need to multiply wit beta.
+        {
+            // let beta = i.checked_sub(1).map(|i| challenges.fri_betas[i]).unwrap_or(F::Extension::ONE);
+            // let beta = *challenges.fri_betas.get(i-1).unwrap_or(&F::Extension::ONE);
+            assert_eq!(evals[x_index_within_coset], old_eval);
+        }
         ensure!(evals[x_index_within_coset] == old_eval);
 
         old_eval = compute_evaluation(
@@ -219,6 +224,7 @@ fn batch_fri_verifier_query_round<
         x_index = coset_index;
         n -= arity_bits;
 
+        old_eval *= challenges.fri_betas[i];
         if batch_index < degree_logs.len()
             && n == degree_logs[batch_index] + params.config.rate_bits
         {
@@ -233,7 +239,7 @@ fn batch_fri_verifier_query_round<
                 &precomputed_reduced_evals[batch_index],
                 params,
             );
-            old_eval += eval * challenges.fri_betas[i].exp_power_of_2(arity_bits);
+            old_eval += eval;
             batch_index += 1;
         }
     }

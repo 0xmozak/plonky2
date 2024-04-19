@@ -180,12 +180,12 @@ pub(crate) fn batch_fri_committed_trees<
             *shift = shift.exp_u64(arity as u64);
             Some(old_shift)
         });
-    let mut beta = F::Extension::ONE;
     let trees = izip!(arities, shifts)
         .map(|(new_arity, old_shift)| {
             // TODO(Matthias): improve the condition.
             if Some(acc_coeffs.len()) == values.peek().map(|v| v.len()) || acc_coeffs.len() == 0 {
-                acc_coeffs += &values.next().unwrap().clone().coset_ifft(old_shift.into()) * beta;
+                // We could do this `coset_ifft` in parallel at the start:
+                acc_coeffs += &values.next().unwrap().clone().coset_ifft(old_shift.into());
             }
             let tree = {
                 let mut acc_values = acc_coeffs.coset_fft(old_shift.into());
@@ -203,7 +203,7 @@ pub(crate) fn batch_fri_committed_trees<
 
             challenger.observe_cap(&tree.cap);
 
-            beta = challenger.get_extension_challenge::<D>();
+            let beta = challenger.get_extension_challenge::<D>();
             // P(x) = sum_{i<r} x^i * P_i(x^r) becomes sum_{i<r} beta^i * P_i(x).
 
             // TODO(Matthias): properly formulated, this can go to the start of the loop.
@@ -212,11 +212,10 @@ pub(crate) fn batch_fri_committed_trees<
                 acc_coeffs
                     .coeffs
                     .par_chunks_exact(new_arity)
-                    .map(|chunk| reduce_with_powers(chunk, beta))
+                    .map(|chunk| reduce_with_powers(chunk, beta) * beta)
                     .collect(),
             );
             // This is the same as adding our new value to the end of the chunk when we do reduce_with_powers.
-            beta = beta.exp_u64(new_arity as u64);
             tree
         })
         .collect();
