@@ -2,6 +2,8 @@
 use alloc::vec::Vec;
 
 use plonky2_field::extension::flatten;
+#[allow(unused_imports)]
+use plonky2_field::types::Field;
 use plonky2_maybe_rayon::*;
 use plonky2_util::reverse_index_bits_in_place;
 
@@ -23,7 +25,7 @@ use crate::util::timing::TimingTree;
 pub fn batch_fri_proof<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>(
     initial_merkle_trees: &[&FieldMerkleTree<F, C::Hasher>],
     lde_polynomial_coeffs: PolynomialCoeffs<F::Extension>,
-    lde_polynomial_values: &mut [PolynomialValues<F::Extension>],
+    lde_polynomial_values: &[PolynomialValues<F::Extension>],
     challenger: &mut Challenger<F, C::Hasher>,
     fri_params: &FriParams,
     timing: &mut TimingTree,
@@ -292,7 +294,7 @@ mod tests {
         let proof = batch_fri_proof::<F, C, D>(
             &[&polynomial_batch.field_merkle_tree],
             lde_final_poly,
-            &mut [lde_final_values],
+            &[lde_final_values],
             &mut challenger,
             &fri_params,
             &mut timing,
@@ -394,7 +396,7 @@ mod tests {
         let proof = batch_fri_proof::<F, C, D>(
             &[&trace_oracle.field_merkle_tree],
             lde_final_poly_0,
-            &mut [lde_final_values_0, lde_final_values_1, lde_final_values_2],
+            &[lde_final_values_0, lde_final_values_1, lde_final_values_2],
             &mut challenger,
             &fri_params,
             &mut timing,
