@@ -872,12 +872,11 @@ pub fn verify_cross_table_lookups<F: RichField + Extendable<D>, const D: usize, 
             .map(|v| v[index].as_ref())
             .unwrap_or_default();
         // We want to iterate on each looking table only once.
-        let mut filtered_looking_tables = vec![];
-        for table in looking_tables {
-            if !filtered_looking_tables.contains(&(table.table)) {
-                filtered_looking_tables.push(table.table);
-            }
-        }
+        let filtered_looking_tables = looking_tables
+            .iter()
+            .map(|table| table.table)
+            .dedup()
+            .collect::<Vec<_>>();
         for c in 0..config.num_challenges {
             // Compute the combination of all looking table CTL polynomial openings.
 
