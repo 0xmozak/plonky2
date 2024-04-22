@@ -314,7 +314,14 @@ where
         timing,
         "compute openings proof",
         PolynomialBatch::prove_openings(
-            &stark.fri_instance(zeta, g, num_ctl_polys.iter().sum(), num_ctl_polys, config),
+            &stark.fri_instance(
+                zeta,
+                g,
+                num_ctl_polys.iter().sum(),
+                num_ctl_polys,
+                config,
+                None
+            ),
             &initial_merkle_trees,
             challenger,
             &fri_params,

@@ -196,6 +196,7 @@ where
             num_ctl_polys,
             num_ctl_zs,
             config,
+            None,
         ),
         &proof.openings.to_fri_openings(),
         &challenges.fri_challenges,

@@ -185,6 +185,7 @@ pub fn verify_stark_proof_with_challenges_circuit<
         num_ctl_polys,
         ctl_zs_first.as_ref().map_or(0, |c| c.len()),
         inner_config,
+        None,
     );
     builder.verify_fri_proof::<C>(
         &fri_instance,

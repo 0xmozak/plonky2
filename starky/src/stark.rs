@@ -20,6 +20,15 @@ use crate::constraint_consumer::{ConstraintConsumer, RecursiveConstraintConsumer
 use crate::evaluation_frame::StarkEvaluationFrame;
 use crate::lookup::Lookup;
 
+#[derive(Debug)]
+/// Configuration for the lookup table.
+pub struct LookupConfig {
+    /// The number of bits used to represent the degree of the lookup table.
+    pub degree_bits: usize,
+    /// The number of Zs used in the lookup table.
+    pub num_zs: usize,
+}
+
 /// Represents a STARK system.
 pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
     /// The total number of columns in the trace.
@@ -84,9 +93,10 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
 
     /// Outputs the maximum quotient polynomial's degree factor of this [`Stark`].
     fn quotient_degree_factor(&self) -> usize {
-        match self.constraint_degree().checked_sub(1) {
-            Some(v) => 1.max(v),
-            None => 0,
+        match self.constraint_degree() {
+            0 => 0,
+            1 => 1,
+            n => n - 1,
         }
     }
 
@@ -104,17 +114,21 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
         num_ctl_helpers: usize,
         num_ctl_zs: Vec<usize>,
         config: &StarkConfig,
+        ctl_logup_cfg: Option<&LookupConfig>,
     ) -> FriInstanceInfo<F, D> {
         let mut oracles = vec![];
         let trace_info = FriPolynomialInfo::from_range(oracles.len(), 0..Self::COLUMNS);
-        oracles.push(FriOracleInfo {
+        let trace_oracle = FriOracleInfo {
             num_polys: Self::COLUMNS,
             blinding: false,
-        });
+        };
+        oracles.push(trace_oracle);
 
+        let num_ctl_logup_zs = ctl_logup_cfg.map(|n| n.num_zs).unwrap_or_default();
         let num_lookup_columns = self.num_lookup_helper_columns(config);
-        let num_auxiliary_polys = num_lookup_columns + num_ctl_helpers + num_ctl_zs.len();
-        let auxiliary_polys_info = if self.uses_lookups() || self.requires_ctls() {
+        let num_auxiliary_polys =
+            num_lookup_columns + num_ctl_helpers + num_ctl_zs.len() + num_ctl_logup_zs;
+        let auxiliary_polys_info = if num_auxiliary_polys > 0 {
             let aux_polys = FriPolynomialInfo::from_range(oracles.len(), 0..num_auxiliary_polys);
             oracles.push(FriOracleInfo {
                 num_polys: num_auxiliary_polys,
@@ -157,7 +171,8 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
         if self.requires_ctls() {
             let ctl_zs_info = FriPolynomialInfo::from_range(
                 1, // auxiliary oracle index
-                num_lookup_columns + num_ctl_helpers..num_auxiliary_polys,
+                num_lookup_columns + num_ctl_helpers
+                    ..num_lookup_columns + num_ctl_helpers + num_ctl_zs.len(),
             );
             let ctl_first_batch = FriBatchInfo {
                 point: F::Extension::ONE,
@@ -165,6 +180,19 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
             };
 
             batches.push(ctl_first_batch);
+        }
+
+        if let Some(lookup_cfg) = ctl_logup_cfg {
+            let polynomials = FriPolynomialInfo::from_range(
+                1, // auxiliary oracle index
+                num_lookup_columns + num_ctl_helpers + num_ctl_zs.len()..num_auxiliary_polys,
+            );
+            let ctl_last_batch = FriBatchInfo {
+                point: F::Extension::primitive_root_of_unity(lookup_cfg.degree_bits).inverse(),
+                polynomials,
+            };
+
+            batches.push(ctl_last_batch);
         }
 
         FriInstanceInfo { oracles, batches }
@@ -179,17 +207,21 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
         num_ctl_helper_polys: usize,
         num_ctl_zs: usize,
         config: &StarkConfig,
+        ctl_logup_cfg: Option<&LookupConfig>,
     ) -> FriInstanceInfoTarget<D> {
         let mut oracles = vec![];
         let trace_info = FriPolynomialInfo::from_range(oracles.len(), 0..Self::COLUMNS);
-        oracles.push(FriOracleInfo {
+        let trace_oracle = FriOracleInfo {
             num_polys: Self::COLUMNS,
             blinding: false,
-        });
+        };
+        oracles.push(trace_oracle);
 
+        let num_ctl_logup_zs = ctl_logup_cfg.map(|n| n.num_zs).unwrap_or_default();
         let num_lookup_columns = self.num_lookup_helper_columns(config);
-        let num_auxiliary_polys = num_lookup_columns + num_ctl_helper_polys + num_ctl_zs;
-        let auxiliary_polys_info = if self.uses_lookups() || self.requires_ctls() {
+        let num_auxiliary_polys =
+            num_lookup_columns + num_ctl_helper_polys + num_ctl_zs + num_ctl_logup_zs;
+        let auxiliary_polys_info = if num_auxiliary_polys > 0 {
             let aux_polys = FriPolynomialInfo::from_range(oracles.len(), 0..num_auxiliary_polys);
             oracles.push(FriOracleInfo {
                 num_polys: num_auxiliary_polys,
@@ -233,7 +265,8 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
         if self.requires_ctls() {
             let ctl_zs_info = FriPolynomialInfo::from_range(
                 1, // auxiliary oracle index
-                num_lookup_columns + num_ctl_helper_polys..num_auxiliary_polys,
+                num_lookup_columns + num_ctl_helper_polys
+                    ..num_lookup_columns + num_ctl_helper_polys + num_ctl_zs,
             );
             let ctl_first_batch = FriBatchInfoTarget {
                 point: builder.one_extension(),
@@ -241,6 +274,21 @@ pub trait Stark<F: RichField + Extendable<D>, const D: usize>: Sync {
             };
 
             batches.push(ctl_first_batch);
+        }
+
+        if let Some(lookup_cfg) = ctl_logup_cfg {
+            let polynomials = FriPolynomialInfo::from_range(
+                1, // auxiliary oracle index
+                num_lookup_columns + num_ctl_helper_polys + num_ctl_zs..num_auxiliary_polys,
+            );
+            let ctl_last_batch = FriBatchInfoTarget {
+                point: builder.constant_extension(
+                    F::Extension::primitive_root_of_unity(lookup_cfg.degree_bits).inverse(),
+                ),
+                polynomials,
+            };
+
+            batches.push(ctl_last_batch);
         }
 
         FriInstanceInfoTarget { oracles, batches }
