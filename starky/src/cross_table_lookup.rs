@@ -1094,17 +1094,12 @@ pub mod debug_utils {
     ) {
         let trace = &trace_poly_values[table.table];
         for i in 0..trace[0].len() {
-            let filter = table.filter.eval_table(trace, i);
-            if filter.is_one() {
-                let row = table
-                    .columns
-                    .iter()
-                    .map(|c| c.eval_table(trace, i))
-                    .collect::<Vec<_>>();
-                multiset.entry(row).or_default().push((table.table, i));
-            } else {
-                assert_eq!(filter, F::ZERO, "Non-binary filter?")
-            }
+            let row = table
+                .columns
+                .iter()
+                .map(|c| c.eval_table(trace, i))
+                .collect::<Vec<_>>();
+            multiset.entry(row).or_default().push((table.table, i));
         }
     }
 
