@@ -6,6 +6,7 @@ use core::iter::once;
 
 use itertools::{chain, izip, Itertools};
 use plonky2_field::extension::flatten;
+#[allow(unused_imports)]
 use plonky2_field::types::Field;
 use plonky2_maybe_rayon::*;
 use plonky2_util::reverse_index_bits_in_place;
