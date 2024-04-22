@@ -176,6 +176,20 @@ impl<F: Field> Neg for Column<F> {
 }
 
 impl<F: Field> Column<F> {
+    /// Returns a column from the provided linear combination and constant.
+    #[must_use]
+    pub fn new(
+        linear_combination: Vec<(usize, F)>,
+        next_row_linear_combination: Vec<(usize, F)>,
+        constant: F,
+    ) -> Self {
+        Self {
+            linear_combination,
+            next_row_linear_combination,
+            constant,
+        }
+    }
+
     /// Returns the representation of a single column in the current row.
     pub fn single(c: usize) -> Self {
         Self {
