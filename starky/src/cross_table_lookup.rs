@@ -110,6 +110,21 @@ impl<F: Field> CrossTableLookup<F> {
         Self { looking_tables }
     }
 
+    /// Creates a new `CrossTableLookup` given some looking tables.
+    /// All tables should have the same width.
+    pub fn new_no_looked_table(looking_tables: Vec<TableWithColumns<F>>) -> Self {
+        assert_eq!(
+            1,
+            looking_tables
+                .iter()
+                .map(|t| t.columns.len())
+                .dedup()
+                .collect::<Vec<_>>()
+                .len()
+        );
+        Self { looking_tables }
+    }
+
     /// Given a table, returns:
     /// - the total number of helper columns for this table, over all Cross-table lookups,
     /// - the total number of z polynomials for this table, over all Cross-table lookups,
