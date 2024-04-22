@@ -1,6 +1,7 @@
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
+use itertools::izip;
 use plonky2_field::extension::flatten;
 #[allow(unused_imports)]
 use plonky2_field::types::Field;
@@ -24,14 +25,15 @@ use crate::util::timing::TimingTree;
 /// Builds a batch FRI proof.
 pub fn batch_fri_proof<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>(
     initial_merkle_trees: &[&FieldMerkleTree<F, C::Hasher>],
-    lde_polynomial_coeffs: PolynomialCoeffs<F::Extension>,
+    // TODO(Matthias): this corresponds to the first item in lde_polynomial_values
+    // It's silly to treat this special.
     lde_polynomial_values: &[PolynomialValues<F::Extension>],
     challenger: &mut Challenger<F, C::Hasher>,
     fri_params: &FriParams,
     timing: &mut TimingTree,
 ) -> FriProof<F, C::Hasher, D> {
-    let n = lde_polynomial_coeffs.len();
-    assert_eq!(lde_polynomial_values[0].len(), n);
+    // We expect a square shape?
+    // No, we expect the first lde_polynomial_values to correspond to lde_polynomial_coeffs?
     // The polynomial vectors should be sorted by degree, from largest to smallest, with no duplicate degrees.
     assert!(lde_polynomial_values
         .windows(2)
@@ -41,12 +43,7 @@ pub fn batch_fri_proof<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>,
     let (trees, final_coeffs) = timed!(
         timing,
         "fold codewords in the commitment phase",
-        batch_fri_committed_trees::<F, C, D>(
-            lde_polynomial_coeffs,
-            lde_polynomial_values,
-            challenger,
-            fri_params,
-        )
+        batch_fri_committed_trees::<F, C, D>(lde_polynomial_values, challenger, fri_params,)
     );
 
     // PoW phase
@@ -56,6 +53,7 @@ pub fn batch_fri_proof<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>,
         fri_proof_of_work::<F, C, D>(challenger, &fri_params.config)
     );
 
+    let n = lde_polynomial_values[0].len();
     // Query phase
     let query_round_proofs = batch_fri_prover_query_rounds::<F, C, D>(
         initial_merkle_trees,
@@ -78,60 +76,76 @@ pub(crate) fn batch_fri_committed_trees<
     C: GenericConfig<D, F = F>,
     const D: usize,
 >(
-    mut final_coeffs: PolynomialCoeffs<F::Extension>,
+    // TODO(Matthias): see about parallelising!
     values: &[PolynomialValues<F::Extension>],
     challenger: &mut Challenger<F, C::Hasher>,
     fri_params: &FriParams,
 ) -> FriCommitedTrees<F, C, D> {
-    let mut trees = Vec::with_capacity(fri_params.reduction_arity_bits.len());
-    let mut shift = F::MULTIPLICATIVE_GROUP_GENERATOR;
-    let mut polynomial_index = 1;
-    let mut final_values = values[0].clone();
-    for arity_bits in &fri_params.reduction_arity_bits {
-        let arity = 1 << arity_bits;
+    let mut acc_coeffs: PolynomialCoeffs<F::Extension> = PolynomialCoeffs::empty();
+    // Just for a debug assertion.
+    let first_len = values[0].len();
 
-        reverse_index_bits_in_place(&mut final_values.values);
-        let chunked_values = final_values.values.par_chunks(arity).map(flatten).collect();
-        let tree = MerkleTree::<F, C::Hasher>::new(chunked_values, fri_params.config.cap_height);
-
-        challenger.observe_cap(&tree.cap);
-        trees.push(tree);
-
-        let beta = challenger.get_extension_challenge::<D>();
-        // P(x) = sum_{i<r} x^i * P_i(x^r) becomes sum_{i<r} beta^i * P_i(x).
-        // TODO: Optimize the folding process. Consider folding the functions directly in the value domain.
-        final_coeffs = PolynomialCoeffs::new(
-            final_coeffs
-                .coeffs
-                .par_chunks_exact(arity)
-                .map(|chunk| reduce_with_powers(chunk, beta))
-                .collect::<Vec<_>>(),
-        );
-        shift = shift.exp_u64(arity as u64);
-        final_values = final_coeffs.coset_fft(shift.into());
-        if polynomial_index != values.len() && final_values.len() == values[polynomial_index].len()
-        {
-            final_values = PolynomialValues::new(
-                final_values
-                    .values
-                    .iter()
-                    .zip(&values[polynomial_index].values)
-                    .map(|(&f, &v)| f * beta + v)
-                    .collect::<Vec<_>>(),
+    let arities = fri_params
+        .reduction_arity_bits
+        .iter()
+        .map(|&arity_bits| 1_usize << arity_bits);
+    let shifts = arities
+        .clone()
+        // This is very similar to 'F::powers', but with some jumps.
+        .scan(F::coset_shift(), |shift: &mut F, arity| {
+            let old_shift = *shift;
+            *shift = shift.exp_u64(arity as u64);
+            Some(old_shift)
+            // shift at time of coset_ifft is actually just a function of first_len / current_len
+        });
+    let mut values = values.iter().peekable();
+    let trees = izip!(arities, shifts)
+        .map(|(arity, old_shift)| {
+            // TODO(Matthias): improve the condition.
+            if Some(acc_coeffs.len()) == values.peek().map(|v| v.len()) || acc_coeffs.len() == 0 {
+                // TODO(Matthias): in principle, we can apply all the coset_ifft on value in parallel at the beginning.
+                acc_coeffs += &values.next().unwrap().clone().coset_ifft(old_shift.into());
+                assert_eq!(
+                    old_shift,
+                    F::coset_shift().exp_u64((first_len / acc_coeffs.len()) as u64)
+                );
+            }
+            let tree = MerkleTree::<F, C::Hasher>::new(
+                {
+                    let mut acc_values = acc_coeffs.coset_fft(old_shift.into());
+                    reverse_index_bits_in_place(&mut acc_values.values);
+                    acc_values.values.par_chunks(arity).map(flatten).collect()
+                },
+                fri_params.config.cap_height,
             );
-            polynomial_index += 1;
-        }
-        final_coeffs = final_values.clone().coset_ifft(shift.into());
-    }
-    assert_eq!(polynomial_index, values.len());
+
+            challenger.observe_cap(&tree.cap);
+
+            let beta = challenger.get_extension_challenge::<D>();
+
+            // P(x) = sum_{i<r} x^i * P_i(x^r) becomes sum_{i<r} beta^(i+1) * P_i(x).
+            acc_coeffs = PolynomialCoeffs::new(
+                acc_coeffs
+                    .coeffs
+                    .par_chunks_exact(arity)
+                    .map(|chunk| reduce_with_powers(chunk, beta) * beta)
+                    .collect(),
+            );
+            tree
+        })
+        .collect();
+    // Make sure we consumed all values:
+    assert_eq!(values.next(), None);
 
     // The coefficients being removed here should always be zero.
-    final_coeffs
+    acc_coeffs
         .coeffs
-        .truncate(final_coeffs.len() >> fri_params.config.rate_bits);
+        .truncate(acc_coeffs.len() >> fri_params.config.rate_bits);
 
-    challenger.observe_extension_elements(&final_coeffs.coeffs);
-    (trees, final_coeffs)
+    challenger.observe_extension_elements(&acc_coeffs.coeffs);
+    // trees.pop();
+    // assert_eq!(fri_params.reduction_arity_bits.len(), trees.len());
+    (trees, acc_coeffs)
 }
 
 fn batch_fri_prover_query_rounds<
@@ -160,6 +174,52 @@ fn batch_fri_prover_query_rounds<
         .collect()
 }
 
+fn make_initial_trees_proof<
+    F: RichField + Extendable<D>,
+    C: GenericConfig<D, F = F>,
+    const D: usize,
+>(
+    initial_merkle_trees: &[&FieldMerkleTree<F, C::Hasher>],
+    x_index: usize,
+) -> FriInitialTreeProof<F, C::Hasher> {
+    FriInitialTreeProof {
+        evals_proofs: initial_merkle_trees
+            .iter()
+            .map(|t| {
+                (
+                    t.values(x_index)
+                        .iter()
+                        .flatten()
+                        .cloned()
+                        .collect::<Vec<_>>(),
+                    t.open_batch(x_index),
+                )
+            })
+            .collect(),
+    }
+}
+
+fn make_steps<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>(
+    trees: &[MerkleTree<F, C::Hasher>],
+    x_index: usize,
+    fri_params: &FriParams,
+) -> Vec<FriQueryStep<F, C::Hasher, D>> {
+    // TODO(Matthias): Right shifting the index goes up in the tree?
+    let x_indices = fri_params
+        .reduction_arity_bits
+        .iter()
+        .scan(x_index, |x_index, &arity_bits| {
+            *x_index >>= arity_bits;
+            Some(*x_index)
+        });
+    izip!(trees, x_indices)
+        .map(|(tree, x_index)| FriQueryStep {
+            evals: unflatten(tree.get(x_index)),
+            merkle_proof: tree.prove(x_index),
+        })
+        .collect::<Vec<_>>()
+}
+
 fn batch_fri_prover_query_round<
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
@@ -167,40 +227,12 @@ fn batch_fri_prover_query_round<
 >(
     initial_merkle_trees: &[&FieldMerkleTree<F, C::Hasher>],
     trees: &[MerkleTree<F, C::Hasher>],
-    mut x_index: usize,
+    x_index: usize,
     fri_params: &FriParams,
 ) -> FriQueryRound<F, C::Hasher, D> {
-    let mut query_steps = Vec::with_capacity(trees.len());
-    let initial_proof = initial_merkle_trees
-        .iter()
-        .map(|t| {
-            (
-                t.values(x_index)
-                    .iter()
-                    .flatten()
-                    .cloned()
-                    .collect::<Vec<_>>(),
-                t.open_batch(x_index),
-            )
-        })
-        .collect::<Vec<_>>();
-    for (i, tree) in trees.iter().enumerate() {
-        let arity_bits = fri_params.reduction_arity_bits[i];
-        let evals = unflatten(tree.get(x_index >> arity_bits));
-        let merkle_proof = tree.prove(x_index >> arity_bits);
-
-        query_steps.push(FriQueryStep {
-            evals,
-            merkle_proof,
-        });
-
-        x_index >>= arity_bits;
-    }
     FriQueryRound {
-        initial_trees_proof: FriInitialTreeProof {
-            evals_proofs: initial_proof,
-        },
-        steps: query_steps,
+        initial_trees_proof: make_initial_trees_proof::<F, C, D>(initial_merkle_trees, x_index),
+        steps: make_steps::<F, C, D>(trees, x_index, fri_params),
     }
 }
 
@@ -210,7 +242,6 @@ mod tests {
     use alloc::vec;
 
     use anyhow::Result;
-    use itertools::Itertools;
     use plonky2_field::goldilocks_field::GoldilocksField;
     use plonky2_field::types::{Field64, Sample};
 
@@ -251,7 +282,7 @@ mod tests {
         };
 
         let n = 1 << k;
-        let trace = PolynomialValues::new((1..n + 1).map(F::from_canonical_i64).collect_vec());
+        let trace = PolynomialValues::new((1..n + 1).map(F::from_canonical_i64).collect());
 
         let polynomial_batch: BatchFriOracle<GoldilocksField, C, D> = BatchFriOracle::from_values(
             vec![trace.clone()],
@@ -293,7 +324,6 @@ mod tests {
 
         let proof = batch_fri_proof::<F, C, D>(
             &[&polynomial_batch.field_merkle_tree],
-            lde_final_poly,
             &[lde_final_values],
             &mut challenger,
             &fri_params,
@@ -395,7 +425,6 @@ mod tests {
 
         let proof = batch_fri_proof::<F, C, D>(
             &[&trace_oracle.field_merkle_tree],
-            lde_final_poly_0,
             &[lde_final_values_0, lde_final_values_1, lde_final_values_2],
             &mut challenger,
             &fri_params,
