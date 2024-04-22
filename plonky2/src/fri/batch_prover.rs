@@ -78,12 +78,14 @@ pub(crate) fn batch_fri_committed_trees<
     C: GenericConfig<D, F = F>,
     const D: usize,
 >(
-    values: &[PolynomialValues<F::Extension>],
     // TODO(Matthias): see about parallelising!
+    values: &[PolynomialValues<F::Extension>],
     challenger: &mut Challenger<F, C::Hasher>,
     fri_params: &FriParams,
 ) -> FriCommitedTrees<F, C, D> {
     let mut acc_coeffs: PolynomialCoeffs<F::Extension> = PolynomialCoeffs::empty();
+    // Just for a debug assertion.
+    let first_len = values[0].len();
 
     let arities = fri_params
         .reduction_arity_bits
@@ -96,6 +98,7 @@ pub(crate) fn batch_fri_committed_trees<
             let old_shift = *shift;
             *shift = shift.exp_u64(arity as u64);
             Some(old_shift)
+            // shift at time of coset_ifft is actually just a function of first_len / current_len
         });
     let mut values = values.iter().peekable();
     let trees = izip!(arities, shifts)
@@ -104,6 +107,7 @@ pub(crate) fn batch_fri_committed_trees<
             if Some(acc_coeffs.len()) == values.peek().map(|v| v.len()) || acc_coeffs.len() == 0 {
                 // TODO(Matthias): in principle, we can apply all the coset_ifft on value in parallel at the beginning.
                 acc_coeffs += &values.next().unwrap().clone().coset_ifft(old_shift.into());
+                assert_eq!(old_shift, F::coset_shift().exp_u64((first_len / acc_coeffs.len()) as u64));
             }
             let tree = MerkleTree::<F, C::Hasher>::new(
                 {
@@ -117,8 +121,8 @@ pub(crate) fn batch_fri_committed_trees<
             challenger.observe_cap(&tree.cap);
 
             let beta = challenger.get_extension_challenge::<D>();
-            // P(x) = sum_{i<r} x^i * P_i(x^r) becomes sum_{i<r} beta^i * P_i(x).
 
+            // P(x) = sum_{i<r} x^i * P_i(x^r) becomes sum_{i<r} beta^(i+1) * P_i(x).
             acc_coeffs = PolynomialCoeffs::new(
                 acc_coeffs
                     .coeffs
