@@ -1,10 +1,7 @@
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
-use core::cmp::Reverse;
-// use core::cmp::Reverse;
-use core::iter::once;
 
-use itertools::{chain, izip, Itertools};
+use itertools::izip;
 use plonky2_field::extension::flatten;
 #[allow(unused_imports)]
 use plonky2_field::types::Field;
@@ -108,7 +105,10 @@ pub(crate) fn batch_fri_committed_trees<
             if Some(acc_coeffs.len()) == values.peek().map(|v| v.len()) || acc_coeffs.len() == 0 {
                 // TODO(Matthias): in principle, we can apply all the coset_ifft on value in parallel at the beginning.
                 acc_coeffs += &values.next().unwrap().clone().coset_ifft(old_shift.into());
-                assert_eq!(old_shift, F::coset_shift().exp_u64((first_len / acc_coeffs.len()) as u64));
+                assert_eq!(
+                    old_shift,
+                    F::coset_shift().exp_u64((first_len / acc_coeffs.len()) as u64)
+                );
             }
             let tree = MerkleTree::<F, C::Hasher>::new(
                 {
@@ -282,7 +282,7 @@ mod tests {
         };
 
         let n = 1 << k;
-        let trace = PolynomialValues::new((1..n + 1).map(F::from_canonical_i64).collect_vec());
+        let trace = PolynomialValues::new((1..n + 1).map(F::from_canonical_i64).collect());
 
         let polynomial_batch: BatchFriOracle<GoldilocksField, C, D> = BatchFriOracle::from_values(
             vec![trace.clone()],
