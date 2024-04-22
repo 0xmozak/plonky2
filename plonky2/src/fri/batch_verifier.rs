@@ -82,19 +82,18 @@ fn batch_fri_verify_initial_proof<F: RichField + Extendable<D>, H: Hasher<F>, co
         .zip(initial_merkle_caps)
         .enumerate()
     {
-        let mut leaf_index = 0;
         let leaves = instance
             .iter()
-            .map(|inst| {
-                (0..inst.oracles[oracle_index].num_polys)
-                    .enumerate()
-                    .map(|_| {
-                        leaf_index += 1;
-                        evals[leaf_index - 1]
-                    })
-                    .collect::<Vec<_>>()
+            .scan(0, |leaf_index, inst| {
+                let num_polys = inst.oracles[oracle_index].num_polys;
+                let leaves = (*leaf_index..*leaf_index + num_polys)
+                    .map(|idx| evals[idx])
+                    .collect::<Vec<_>>();
+                *leaf_index += num_polys;
+                Some(leaves)
             })
             .collect::<Vec<_>>();
+
         verify_field_merkle_proof_to_cap::<F, H>(&leaves, degree_logs, x_index, cap, merkle_proof)?;
     }
 
