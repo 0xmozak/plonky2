@@ -808,22 +808,12 @@ pub(crate) fn get_helper_cols<F: Field>(
         let mut filter_col = Vec::with_capacity(degree);
         let first_combined = (0..degree)
             .map(|d| {
-                let f = {
-                    let f = first_filter.eval_table(trace, d);
-                    filter_col.push(f);
-                    f
-                };
-                if f.is_one() {
-                    let evals = first_col
-                        .iter()
-                        .map(|c| c.eval_table(trace, d))
-                        .collect::<Vec<F>>();
-                    challenge.combine(evals.iter())
-                } else {
-                    assert_eq!(f, F::ZERO, "Non-binary filter?");
-                    // Dummy value. Cannot be zero since it will be batch-inverted.
-                    F::ONE
-                }
+                filter_col.push(first_filter.eval_table(trace, d));
+                let evals = first_col
+                    .iter()
+                    .map(|c| c.eval_table(trace, d))
+                    .collect::<Vec<F>>();
+                challenge.combine(evals.iter())
             })
             .collect::<Vec<F>>();
 
@@ -838,22 +828,12 @@ pub(crate) fn get_helper_cols<F: Field>(
             let mut filter_col = Vec::with_capacity(degree);
             let mut combined = (0..degree)
                 .map(|d| {
-                    let f = {
-                        let f = filt.eval_table(trace, d);
-                        filter_col.push(f);
-                        f
-                    };
-                    if f.is_one() {
-                        let evals = col
-                            .iter()
-                            .map(|c| c.eval_table(trace, d))
-                            .collect::<Vec<F>>();
-                        challenge.combine(evals.iter())
-                    } else {
-                        assert_eq!(f, F::ZERO, "Non-binary filter?");
-                        // Dummy value. Cannot be zero since it will be batch-inverted.
-                        F::ONE
-                    }
+                    filter_col.push(filt.eval_table(trace, d));
+                    let evals = col
+                        .iter()
+                        .map(|c| c.eval_table(trace, d))
+                        .collect::<Vec<F>>();
+                    challenge.combine(evals.iter())
                 })
                 .collect::<Vec<F>>();
 
