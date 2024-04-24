@@ -80,12 +80,10 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
             .map(|p| log2_strict(p.len()))
             .collect_vec();
         assert!(degree_bits.windows(2).all(|pair| { pair[0] >= pair[1] }));
-        let max_degree_bits = degree_bits[0];
 
         let num_polynomials = polynomials.len();
         let mut group_start = 0;
         let mut leaves = Vec::new();
-        let shift = F::coset_shift();
 
         for (i, d) in degree_bits.iter().enumerate() {
             if i == num_polynomials - 1 || *d > degree_bits[i + 1] {
@@ -95,7 +93,6 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
                     PolynomialBatch::<F, C, D>::lde_values(
                         &polynomials[group_start..i + 1],
                         rate_bits,
-                        shift.exp_power_of_2(max_degree_bits - d),
                         blinding,
                         fft_root_table[i]
                     )
@@ -176,11 +173,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
             let lde_final_values = timed!(
                 timing,
                 &format!("perform final FFT {}", lde_final_poly.len()),
-                lde_final_poly.coset_fft(
-                    F::coset_shift()
-                        .exp_u64(1 << (degree_bits[0] - degree_bits[i]))
-                        .into()
-                )
+                lde_final_poly.coset_fft(F::coset_shift().into())
             );
             final_lde_polynomial_coeff.push(lde_final_poly);
             final_lde_polynomial_values.push(lde_final_values);
@@ -191,7 +184,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
                 .iter()
                 .map(|o| &o.field_merkle_tree)
                 .collect::<Vec<_>>(),
-            &final_lde_polynomial_coeff,
+            final_lde_polynomial_coeff[0].clone(),
             &final_lde_polynomial_values,
             challenger,
             fri_params,
