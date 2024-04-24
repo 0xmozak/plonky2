@@ -1,18 +1,27 @@
 #[cfg(not(feature = "std"))]
+use alloc::format;
+#[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
 use itertools::Itertools;
 use plonky2_field::extension::Extendable;
 use plonky2_field::fft::FftRootTable;
 use plonky2_field::polynomial::{PolynomialCoeffs, PolynomialValues};
+use plonky2_field::types::Field;
 use plonky2_maybe_rayon::*;
 use plonky2_util::{log2_strict, reverse_index_bits_in_place};
 
+use crate::fri::batch_prover::batch_fri_proof;
 use crate::fri::oracle::PolynomialBatch;
+use crate::fri::proof::FriProof;
+use crate::fri::structure::{FriBatchInfo, FriInstanceInfo};
+use crate::fri::FriParams;
 use crate::hash::field_merkle_tree::FieldMerkleTree;
 use crate::hash::hash_types::RichField;
+use crate::iop::challenger::Challenger;
 use crate::plonk::config::GenericConfig;
 use crate::timed;
+use crate::util::reducing::ReducingFactor;
 use crate::util::timing::TimingTree;
 use crate::util::transpose;
 
@@ -116,6 +125,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
 
     /// Produces a batch opening proof.
     pub fn prove_openings(
+        degree_bits: &[usize],
         instances: &[FriInstanceInfo<F, D>],
         oracles: &[&Self],
         challenger: &mut Challenger<F, C::Hasher>,
@@ -126,7 +136,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         let alpha = challenger.get_extension_challenge::<D>();
         let mut alpha = ReducingFactor::new(alpha);
 
-        let mut final_lde_polynomial_coeff = PolynomialCoeffs::empty();
+        let mut final_lde_polynomial_coeff = Vec::with_capacity(instances.len());
         let mut final_lde_polynomial_values = Vec::with_capacity(instances.len());
         for (i, instance) in instances.iter().enumerate() {
             // Final low-degree polynomial that goes into FRI.
@@ -155,21 +165,27 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
                 final_poly += quotient;
             }
 
+            assert_eq!(log2_strict(final_poly.len()), degree_bits[i]);
             let lde_final_poly = final_poly.lde(fri_params.config.rate_bits);
             let lde_final_values = timed!(
                 timing,
                 &format!("perform final FFT {}", lde_final_poly.len()),
-                lde_final_poly.coset_fft(F::coset_shift().into())
+                lde_final_poly.coset_fft(
+                    F::coset_shift()
+                        .exp_u64(1 << (degree_bits[0] - degree_bits[i]))
+                        .into()
+                )
             );
+            final_lde_polynomial_coeff.push(lde_final_poly);
             final_lde_polynomial_values.push(lde_final_values);
-            if i == 0 {
-                final_lde_polynomial_coeff = lde_final_poly;
-            }
         }
 
         batch_fri_proof::<F, C, D>(
-            &oracles.iter().map(|o|&o.field_merkle_tree).collect::<Vec<_>>(),
-            final_lde_polynomial_coeff,
+            &oracles
+                .iter()
+                .map(|o| &o.field_merkle_tree)
+                .collect::<Vec<_>>(),
+            &final_lde_polynomial_coeff,
             &final_lde_polynomial_values,
             challenger,
             fri_params,
