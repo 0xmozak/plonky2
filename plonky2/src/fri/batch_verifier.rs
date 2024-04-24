@@ -82,19 +82,18 @@ fn batch_fri_verify_initial_proof<F: RichField + Extendable<D>, H: Hasher<F>, co
         .zip(initial_merkle_caps)
         .enumerate()
     {
-        let mut leaf_index = 0;
         let leaves = instance
             .iter()
-            .map(|inst| {
-                (0..inst.oracles[oracle_index].num_polys)
-                    .enumerate()
-                    .map(|_| {
-                        leaf_index += 1;
-                        evals[leaf_index - 1]
-                    })
-                    .collect::<Vec<_>>()
+            .scan(0, |leaf_index, inst| {
+                let num_polys = inst.oracles[oracle_index].num_polys;
+                let leaves = (*leaf_index..*leaf_index + num_polys)
+                    .map(|idx| evals[idx])
+                    .collect::<Vec<_>>();
+                *leaf_index += num_polys;
+                Some(leaves)
             })
             .collect::<Vec<_>>();
+
         verify_field_merkle_proof_to_cap::<F, H>(&leaves, degree_logs, x_index, cap, merkle_proof)?;
     }
 
@@ -221,14 +220,12 @@ fn batch_fri_verifier_query_round<
         if batch_index < degree_logs.len()
             && n == degree_logs[batch_index] + params.config.rate_bits
         {
-            let subgroup_x_init = F::MULTIPLICATIVE_GROUP_GENERATOR
-                * F::primitive_root_of_unity(n).exp_u64(reverse_bits(x_index, n) as u64);
             let eval = batch_fri_combine_initial::<F, C, D>(
                 instance,
                 batch_index,
                 &round_proof.initial_trees_proof,
                 challenges.fri_alpha,
-                subgroup_x_init,
+                subgroup_x,
                 &precomputed_reduced_evals[batch_index],
                 params,
             );

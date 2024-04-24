@@ -1,27 +1,18 @@
 #[cfg(not(feature = "std"))]
-use alloc::format;
-#[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
 use itertools::Itertools;
 use plonky2_field::extension::Extendable;
 use plonky2_field::fft::FftRootTable;
 use plonky2_field::polynomial::{PolynomialCoeffs, PolynomialValues};
-use plonky2_field::types::Field;
 use plonky2_maybe_rayon::*;
 use plonky2_util::{log2_strict, reverse_index_bits_in_place};
 
-use crate::fri::batch_prover::batch_fri_proof;
 use crate::fri::oracle::PolynomialBatch;
-use crate::fri::proof::FriProof;
-use crate::fri::structure::{FriBatchInfo, FriInstanceInfo};
-use crate::fri::FriParams;
 use crate::hash::field_merkle_tree::FieldMerkleTree;
 use crate::hash::hash_types::RichField;
-use crate::iop::challenger::Challenger;
 use crate::plonk::config::GenericConfig;
 use crate::timed;
-use crate::util::reducing::ReducingFactor;
 use crate::util::timing::TimingTree;
 use crate::util::transpose;
 
@@ -79,10 +70,12 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
             .map(|p| log2_strict(p.len()))
             .collect_vec();
         assert!(degree_logs.windows(2).all(|pair| { pair[0] >= pair[1] }));
+        let max_degree_log = degree_logs[0];
 
         let num_polynomials = polynomials.len();
         let mut group_start = 0;
         let mut leaves = Vec::new();
+        let shift = F::coset_shift();
 
         for (i, d) in degree_logs.iter().enumerate() {
             if i == num_polynomials - 1 || *d > degree_logs[i + 1] {
@@ -92,6 +85,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
                     PolynomialBatch::<F, C, D>::lde_values(
                         &polynomials[group_start..i + 1],
                         rate_bits,
+                        shift.exp_power_of_2(max_degree_log - d),
                         blinding,
                         fft_root_table[i]
                     )
