@@ -179,7 +179,6 @@ pub struct CompressedStarkProofWithPublicInputs<
 /// creating a recursive wrapper proof around a STARK proof.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(bound = "")]
-// #[serde(bound = "<C::Hasher as Hasher<F>>::Permutation: Deserialize + Serialize")]
 pub struct StarkProofWithMetadata<F, C, const D: usize>
 where
     F: RichField + Extendable<D>,
@@ -254,7 +253,6 @@ pub struct MultiProofChallenges<F: RichField + Extendable<D>, const D: usize, co
 /// Purported values of each polynomial at the challenge point.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(bound = "")]
-
 pub struct StarkOpeningSet<F: RichField + Extendable<D>, const D: usize> {
     /// Openings of trace polynomials at `zeta`.
     pub local_values: Vec<F::Extension>,
