@@ -882,14 +882,11 @@ pub fn verify_cross_table_lookups<F: RichField + Extendable<D>, const D: usize, 
 ) -> Result<()> {
     let mut ctl_zs_openings = ctl_zs_first.iter().map(|v| v.iter()).collect::<Vec<_>>();
     for (index, CrossTableLookup { looking_tables }) in cross_table_lookups.iter().enumerate() {
-        // Get elements looking into `looked_table` that are not associated to any STARK.
-        let extra_sum_vec: &[F] = ctl_extra_looking_sums
-            .map(|v| v[index].as_ref())
-            .unwrap_or_default();
         // We want to iterate on each looking table only once.
         let filtered_looking_tables = looking_tables
             .iter()
             .map(|table| table.table)
+            .sorted()
             .dedup()
             .collect::<Vec<_>>();
         for c in 0..config.num_challenges {
@@ -899,7 +896,9 @@ pub fn verify_cross_table_lookups<F: RichField + Extendable<D>, const D: usize, 
                 .iter()
                 .map(|&table| *ctl_zs_openings[table].next().unwrap())
                 .sum::<F>()
-                + extra_sum_vec[c];
+                // Get elements looking into `looked_table` that are not associated to any STARK.
+                + ctl_extra_looking_sums
+                .map(|v| v[index][c]).unwrap_or_default();
 
             // Ensure that the combination of looking table openings balances to net zero.
             ensure!(
