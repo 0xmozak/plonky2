@@ -113,12 +113,12 @@ pub(crate) fn batch_fri_committed_trees<
         {
             final_values = PolynomialValues::new(
                 zip_eq(final_values.values.iter(), &values[polynomial_index].values)
-                    .map(|(&f, &v)| f + v)
+                    .map(|(&f, &v)| f * beta + v)
                     .collect::<Vec<_>>(),
             );
             final_coeffs = PolynomialCoeffs::new(
                 zip_eq(final_coeffs.coeffs.iter(), &coeffs[polynomial_index].coeffs)
-                    .map(|(&f, &v)| f + v)
+                    .map(|(&f, &v)| f * beta + v)
                     .collect::<Vec<_>>(),
             );
             polynomial_index += 1;

@@ -229,7 +229,7 @@ fn batch_fri_verifier_query_round<
                 &precomputed_reduced_evals[batch_index],
                 params,
             );
-            old_eval += eval;
+            old_eval = old_eval * challenges.fri_betas[i] + eval;
             batch_index += 1;
         }
     }
