@@ -928,17 +928,13 @@ pub fn verify_cross_table_lookups_circuit<
     let mut ctl_zs_openings = ctl_zs_first.iter().map(|v| v.iter()).collect::<Vec<_>>();
     for (index, CrossTableLookup { looking_tables }) in cross_table_lookups.into_iter().enumerate()
     {
-        // Get elements looking into `looked_table` that are not associated to any STARK.
-        let extra_sum_vec: &[Target] = ctl_extra_looking_sums
-            .map(|v| v[index].as_ref())
-            .unwrap_or_default();
         // We want to iterate on each looking table only once.
-        let mut filtered_looking_tables = vec![];
-        for table in looking_tables {
-            if !filtered_looking_tables.contains(&(table.table)) {
-                filtered_looking_tables.push(table.table);
-            }
-        }
+        let filtered_looking_tables = looking_tables
+            .iter()
+            .map(|table| table.table)
+            .sorted()
+            .dedup()
+            .collect::<Vec<_>>();
         for c in 0..inner_config.num_challenges {
             // Compute the combination of all looking table CTL polynomial openings.
             let looking_zs_sum = builder.add_many(
@@ -947,7 +943,11 @@ pub fn verify_cross_table_lookups_circuit<
                     .map(|&table| *ctl_zs_openings[table].next().unwrap()),
             );
 
-            let looking_zs_sum = builder.add(looking_zs_sum, extra_sum_vec[c]);
+            // Get elements looking into `looked_table` that are not associated to any STARK.
+            let extra_sum = ctl_extra_looking_sums
+                .map(|v| v[index][c])
+                .unwrap_or_default();
+            let looking_zs_sum = builder.add(looking_zs_sum, extra_sum);
             let zero = builder.zero();
 
             // Verify that the combination of looking table openings is equal to the looked table opening.
