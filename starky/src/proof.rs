@@ -136,7 +136,7 @@ pub struct StarkProofWithPublicInputs<
 }
 
 /// Circuit version of [`StarkProofWithPublicInputs`].
-#[derive(Debug, Clone)]
+#[derive(Eq, PartialEq, Debug, Clone)]
 pub struct StarkProofWithPublicInputsTarget<const D: usize> {
     /// `Target` STARK proof.
     pub proof: StarkProofTarget<D>,
