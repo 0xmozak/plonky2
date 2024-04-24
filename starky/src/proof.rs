@@ -178,7 +178,7 @@ pub struct CompressedStarkProofWithPublicInputs<
 /// A [`StarkProof`] along with metadata about the initial Fiat-Shamir state, which is used when
 /// creating a recursive wrapper proof around a STARK proof.
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(bound = "<C::Hasher as Hasher<F>>::Permutation: for<'a> Deserialize<'a> + Serialize")]
+#[serde(bound = "")]
 // #[serde(bound = "<C::Hasher as Hasher<F>>::Permutation: Deserialize + Serialize")]
 pub struct StarkProofWithMetadata<F, C, const D: usize>
 where

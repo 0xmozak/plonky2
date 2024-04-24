@@ -10,6 +10,8 @@ use core::fmt::Debug;
 
 use plonky2_field::extension::{Extendable, FieldExtension};
 use plonky2_field::types::{Field, PrimeField64};
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 use unroll::unroll_for_loops;
 
 use crate::gates::poseidon2::Poseidon2Gate;
@@ -490,7 +492,7 @@ pub trait Poseidon2: PrimeField64 {
     }
 }
 
-#[derive(Default, Clone, Copy, Debug, PartialEq)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Poseidon2Permutation<T> {
     state: [T; WIDTH],
 }
@@ -519,8 +521,8 @@ impl<T> AsRef<[T]> for Poseidon2Permutation<T> {
     }
 }
 
-impl<T: Copy + Debug + Default + Eq + Permuter + Send + Sync> PlonkyPermutation<T>
-    for Poseidon2Permutation<T>
+impl<T: Copy + Debug + Default + Eq + Permuter + Send + Sync + Serialize + DeserializeOwned>
+    PlonkyPermutation<T> for Poseidon2Permutation<T>
 {
     const RATE: usize = 8;
     const WIDTH: usize = WIDTH;
@@ -559,7 +561,8 @@ impl<T: Copy + Debug + Default + Eq + Permuter + Send + Sync> PlonkyPermutation<
 }
 
 /// Poseidon2 hash function.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(bound = "")]
 pub struct Poseidon2Hash;
 impl<F: RichField> Hasher<F> for Poseidon2Hash {
     const HASH_SIZE: usize = 4 * 8;
