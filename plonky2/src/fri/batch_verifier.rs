@@ -25,14 +25,14 @@ pub fn verify_batch_fri_proof<
     const D: usize,
 >(
     degree_logs: &[usize],
-    instance: &[&FriInstanceInfo<F, D>],
+    instances: &[FriInstanceInfo<F, D>],
     openings: &[&FriOpenings<F, D>],
     challenges: &FriChallenges<F, D>,
     initial_merkle_cap: &[MerkleCap<F, C::Hasher>],
     proof: &FriProof<F, C::Hasher, D>,
     params: &FriParams,
 ) -> anyhow::Result<()> {
-    validate_batch_fri_proof_shape::<F, C, D>(proof, instance, params)?;
+    validate_batch_fri_proof_shape::<F, C, D>(proof, instances, params)?;
 
     // Check PoW.
     fri_verify_proof_of_work(challenges.fri_pow_response, &params.config)?;
@@ -55,7 +55,7 @@ pub fn verify_batch_fri_proof<
     {
         batch_fri_verifier_query_round::<F, C, D>(
             degree_logs,
-            instance,
+            instances,
             challenges,
             &precomputed_reduced_evals,
             initial_merkle_cap,
@@ -71,7 +71,7 @@ pub fn verify_batch_fri_proof<
 
 fn batch_fri_verify_initial_proof<F: RichField + Extendable<D>, H: Hasher<F>, const D: usize>(
     degree_logs: &[usize],
-    instance: &[&FriInstanceInfo<F, D>],
+    instances: &[FriInstanceInfo<F, D>],
     x_index: usize,
     proof: &FriInitialTreeProof<F, H>,
     initial_merkle_caps: &[MerkleCap<F, H>],
@@ -82,7 +82,7 @@ fn batch_fri_verify_initial_proof<F: RichField + Extendable<D>, H: Hasher<F>, co
         .zip(initial_merkle_caps)
         .enumerate()
     {
-        let leaves = instance
+        let leaves = instances
             .iter()
             .scan(0, |leaf_index, inst| {
                 let num_polys = inst.oracles[oracle_index].num_polys;
@@ -105,7 +105,7 @@ fn batch_fri_combine_initial<
     C: GenericConfig<D, F = F>,
     const D: usize,
 >(
-    instance: &[&FriInstanceInfo<F, D>],
+    instances: &[FriInstanceInfo<F, D>],
     index: usize,
     proof: &FriInitialTreeProof<F, C::Hasher>,
     alpha: F::Extension,
@@ -118,7 +118,7 @@ fn batch_fri_combine_initial<
     let mut alpha = ReducingFactor::new(alpha);
     let mut sum = F::Extension::ZERO;
 
-    for (batch, reduced_openings) in instance[index]
+    for (batch, reduced_openings) in instances[index]
         .batches
         .iter()
         .zip(&precomputed_reduced_evals.reduced_openings_at_point)
@@ -127,11 +127,11 @@ fn batch_fri_combine_initial<
         let evals = polynomials
             .iter()
             .map(|p| {
-                let start_index = instance[0..index]
+                let start_index = instances[0..index]
                     .iter()
                     .map(|inst| inst.oracles[p.oracle_index].num_polys)
                     .sum();
-                let poly_blinding = instance[index].oracles[p.oracle_index].blinding;
+                let poly_blinding = instances[index].oracles[p.oracle_index].blinding;
                 let salted = params.hiding && poly_blinding;
                 proof.fmt_unsalted_eval(start_index, p.oracle_index, p.polynomial_index, salted)
             })
@@ -152,7 +152,7 @@ fn batch_fri_verifier_query_round<
     const D: usize,
 >(
     degree_logs: &[usize],
-    instance: &[&FriInstanceInfo<F, D>],
+    instances: &[FriInstanceInfo<F, D>],
     challenges: &FriChallenges<F, D>,
     precomputed_reduced_evals: &[PrecomputedReducedOpenings<F, D>],
     initial_merkle_caps: &[MerkleCap<F, C::Hasher>],
@@ -163,7 +163,7 @@ fn batch_fri_verifier_query_round<
 ) -> anyhow::Result<()> {
     batch_fri_verify_initial_proof::<F, C::Hasher, D>(
         degree_logs,
-        instance,
+        instances,
         x_index,
         &round_proof.initial_trees_proof,
         initial_merkle_caps,
@@ -177,7 +177,7 @@ fn batch_fri_verifier_query_round<
     // old_eval is the last derived evaluation; it will be checked for consistency with its
     // committed "parent" value in the next iteration.
     let mut old_eval = batch_fri_combine_initial::<F, C, D>(
-        instance,
+        instances,
         batch_index,
         &round_proof.initial_trees_proof,
         challenges.fri_alpha,
@@ -221,7 +221,7 @@ fn batch_fri_verifier_query_round<
             && n == degree_logs[batch_index] + params.config.rate_bits
         {
             let eval = batch_fri_combine_initial::<F, C, D>(
-                instance,
+                instances,
                 batch_index,
                 &round_proof.initial_trees_proof,
                 challenges.fri_alpha,
@@ -235,7 +235,7 @@ fn batch_fri_verifier_query_round<
     }
     assert_eq!(
         batch_index,
-        instance.len(),
+        instances.len(),
         "Wrong number of folded instances."
     );
 

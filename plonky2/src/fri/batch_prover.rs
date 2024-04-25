@@ -315,7 +315,7 @@ mod tests {
         };
         verify_batch_fri_proof::<GoldilocksField, C, 2>(
             &[k],
-            &[&fri_instance],
+            &[fri_instance],
             &[&FriOpenings {
                 batches: vec![fri_opening_batch],
             }],
@@ -406,20 +406,26 @@ mod tests {
             &mut timing,
         );
 
-        let fri_instance = &FriInstanceInfo {
-            oracles: vec![FriOracleInfo {
-                num_polys: 1,
-                blinding: false,
-            }],
-            batches: vec![FriBatchInfo {
-                point: zeta,
-                polynomials: vec![FriPolynomialInfo {
-                    oracle_index: 0,
-                    polynomial_index: 0,
+        let get_test_fri_instance = || -> FriInstanceInfo<F, D> {
+            FriInstanceInfo {
+                oracles: vec![FriOracleInfo {
+                    num_polys: 1,
+                    blinding: false,
                 }],
-            }],
+                batches: vec![FriBatchInfo {
+                    point: zeta,
+                    polynomials: vec![FriPolynomialInfo {
+                        oracle_index: 0,
+                        polynomial_index: 0,
+                    }],
+                }],
+            }
         };
-        let fri_instances = vec![fri_instance, fri_instance, fri_instance];
+        let fri_instances = vec![
+            get_test_fri_instance(),
+            get_test_fri_instance(),
+            get_test_fri_instance(),
+        ];
         let fri_challenges = verifier_challenger.fri_challenges::<C, D>(
             &proof.commit_phase_merkle_caps,
             &proof.final_poly,

@@ -68,7 +68,7 @@ where
 
 pub(crate) fn validate_batch_fri_proof_shape<F, C, const D: usize>(
     proof: &FriProof<F, C::Hasher, D>,
-    instance: &[&FriInstanceInfo<F, D>],
+    instances: &[FriInstanceInfo<F, D>],
     params: &FriParams,
 ) -> anyhow::Result<()>
 where
@@ -94,7 +94,7 @@ where
         } = query_round;
 
         let mut leaf_len = 0;
-        for inst in instance {
+        for inst in instances {
             ensure!(initial_trees_proof.evals_proofs.len() == inst.oracles.len());
             for oracle in &inst.oracles {
                 leaf_len += oracle.num_polys + salt_size(oracle.blinding && params.hiding);
