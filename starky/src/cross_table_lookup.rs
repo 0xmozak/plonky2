@@ -98,30 +98,16 @@ pub struct CrossTableLookup<F: Field> {
 
 impl<F: Field> CrossTableLookup<F> {
     /// Creates a new `CrossTableLookup` given some looking tables and a looked table.
-    /// All tables should have the same width.
     pub fn new(
         mut looking_tables: Vec<TableWithColumns<F>>,
         looked_table: TableWithColumns<F>,
     ) -> Self {
-        assert!(looking_tables
-            .iter()
-            .all(|twc| twc.columns.len() == looked_table.columns.len()));
         looking_tables.push(-looked_table);
         Self { looking_tables }
     }
 
     /// Creates a new `CrossTableLookup` given some looking tables.
-    /// All tables should have the same width.
     pub fn new_no_looked_table(looking_tables: Vec<TableWithColumns<F>>) -> Self {
-        assert_eq!(
-            1,
-            looking_tables
-                .iter()
-                .map(|t| t.columns.len())
-                .dedup()
-                .collect::<Vec<_>>()
-                .len()
-        );
         Self { looking_tables }
     }
 
