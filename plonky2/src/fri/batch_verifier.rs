@@ -26,7 +26,7 @@ pub fn verify_batch_fri_proof<
 >(
     degree_logs: &[usize],
     instances: &[FriInstanceInfo<F, D>],
-    openings: &[&FriOpenings<F, D>],
+    openings: &[FriOpenings<F, D>],
     challenges: &FriChallenges<F, D>,
     initial_merkle_cap: &[MerkleCap<F, C::Hasher>],
     proof: &FriProof<F, C::Hasher, D>,

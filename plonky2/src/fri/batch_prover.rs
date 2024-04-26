@@ -316,7 +316,7 @@ mod tests {
         verify_batch_fri_proof::<GoldilocksField, C, 2>(
             &[k],
             &[fri_instance],
-            &[&FriOpenings {
+            &[FriOpenings {
                 batches: vec![fri_opening_batch],
             }],
             &fri_challenges,
@@ -433,17 +433,17 @@ mod tests {
             k0,
             &fri_params.config,
         );
-        let fri_opening_batch_0 = &FriOpenings {
+        let fri_opening_batch_0 = FriOpenings {
             batches: vec![FriOpeningBatch {
                 values: vec![poly0.to_extension::<D>().eval(zeta)],
             }],
         };
-        let fri_opening_batch_1 = &FriOpenings {
+        let fri_opening_batch_1 = FriOpenings {
             batches: vec![FriOpeningBatch {
                 values: vec![poly1.to_extension::<D>().eval(zeta)],
             }],
         };
-        let fri_opening_batch_2 = &FriOpenings {
+        let fri_opening_batch_2 = FriOpenings {
             batches: vec![FriOpeningBatch {
                 values: vec![poly2.to_extension::<D>().eval(zeta)],
             }],
