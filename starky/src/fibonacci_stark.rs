@@ -134,6 +134,7 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for FibonacciStar
 #[cfg(test)]
 mod tests {
     use anyhow::Result;
+    use log::info;
     use plonky2::field::extension::Extendable;
     use plonky2::field::types::Field;
     use plonky2::hash::hash_types::RichField;
@@ -270,5 +271,35 @@ mod tests {
 
     fn init_logger() {
         let _ = env_logger::builder().format_timestamp(None).try_init();
+    }
+
+
+    #[test]
+    fn test_generate_circuit_hash() -> Result<()> {
+        init_logger();
+        const D: usize = 2;
+        type C = PoseidonGoldilocksConfig;
+        type F = <C as GenericConfig<D>>::F;
+        type S = FibonacciStark<F, D>;
+
+        let config = StarkConfig::standard_fast_config();
+        let num_rows = 1 << 5;
+
+        // Test first STARK
+        let stark = S::new(num_rows);
+
+        let circuit_config = CircuitConfig::standard_recursion_config();
+        for degree_bits in 8..21 {
+            let mut builder = CircuitBuilder::<F, D>::new(circuit_config.clone());
+            let pt =
+                add_virtual_stark_proof_with_pis(&mut builder, &stark, &config, degree_bits, 0, 0);
+
+            verify_stark_proof_circuit::<F, C, S, D>(&mut builder, stark, pt, &config);
+
+            let data = builder.build::<C>();
+            info!("{:?}", data.verifier_only.circuit_digest);
+        }
+
+        Ok(())
     }
 }
