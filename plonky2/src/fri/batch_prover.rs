@@ -406,7 +406,7 @@ mod tests {
             &mut timing,
         );
 
-        let get_test_fri_instance = || -> FriInstanceInfo<F, D> {
+        let get_test_fri_instance = |polynomial_index: usize| -> FriInstanceInfo<F, D> {
             FriInstanceInfo {
                 oracles: vec![FriOracleInfo {
                     num_polys: 1,
@@ -416,15 +416,15 @@ mod tests {
                     point: zeta,
                     polynomials: vec![FriPolynomialInfo {
                         oracle_index: 0,
-                        polynomial_index: 0,
+                        polynomial_index,
                     }],
                 }],
             }
         };
         let fri_instances = vec![
-            get_test_fri_instance(),
-            get_test_fri_instance(),
-            get_test_fri_instance(),
+            get_test_fri_instance(0),
+            get_test_fri_instance(1),
+            get_test_fri_instance(2),
         ];
         let fri_challenges = verifier_challenger.fri_challenges::<C, D>(
             &proof.commit_phase_merkle_caps,

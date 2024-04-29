@@ -127,13 +127,9 @@ fn batch_fri_combine_initial<
         let evals = polynomials
             .iter()
             .map(|p| {
-                let start_index = instances[0..index]
-                    .iter()
-                    .map(|inst| inst.oracles[p.oracle_index].num_polys)
-                    .sum();
                 let poly_blinding = instances[index].oracles[p.oracle_index].blinding;
                 let salted = params.hiding && poly_blinding;
-                proof.fmt_unsalted_eval(start_index, p.oracle_index, p.polynomial_index, salted)
+                proof.unsalted_eval(p.oracle_index, p.polynomial_index, salted)
             })
             .map(F::Extension::from_basefield);
         let reduced_evals = alpha.reduce(evals);
