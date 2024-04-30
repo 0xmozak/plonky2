@@ -45,6 +45,7 @@ use plonky2::iop::ext_target::ExtensionTarget;
 use plonky2::iop::target::Target;
 use plonky2::plonk::circuit_builder::CircuitBuilder;
 use plonky2::plonk::config::GenericConfig;
+use plonky2_maybe_rayon::*;
 
 use crate::config::StarkConfig;
 use crate::constraint_consumer::{ConstraintConsumer, RecursiveConstraintConsumer};
@@ -318,10 +319,11 @@ pub(crate) fn get_ctl_auxiliary_polys<F: Field>(
 
 /// Generates all the cross-table lookup data, for all tables.
 /// - `trace_poly_values` corresponds to the trace values for all tables.
-/// - `cross_table_lookups` corresponds to all the cross-table lookups, i.e. the looked and looking tables, as described in `CrossTableLookup`.
+/// - `cross_table_lookups` corresponds to all the cross-table lookups, i.e. the looking tables, as described in `CrossTableLookup`.
 /// - `ctl_challenges` corresponds to the challenges used for CTLs.
 /// - `constraint_degree` is the maximal constraint degree for the table.
 /// For each `CrossTableLookup`, and each looking/looked table, the partial products for the CTL are computed, and added to the said table's `CtlZData`.
+// TODO(Matthias): parallelise.
 pub(crate) fn cross_table_lookup_data<'a, F: RichField, const D: usize, const N: usize>(
     trace_poly_values: &[Vec<PolynomialValues<F>>; N],
     cross_table_lookups: &'a [CrossTableLookup<F>],
@@ -338,6 +340,7 @@ pub(crate) fn cross_table_lookup_data<'a, F: RichField, const D: usize, const N:
                 .collect::<Vec<_>>()
         );
         for &challenge in &ctl_challenges.challenges {
+            // TODO(Matthias): parallelise.
             let helper_zs_looking = ctl_helper_zs_cols(
                 trace_poly_values,
                 looking_tables.clone(),
@@ -385,13 +388,15 @@ fn ctl_helper_zs_cols<F: Field, const N: usize>(
     challenge: GrandProductChallenge<F>,
     constraint_degree: usize,
 ) -> Vec<(usize, Vec<PolynomialValues<F>>)> {
-    looking_tables
+    let mut looking_tables: Vec<_> = looking_tables
         .iter()
         .map(|a| (a.table, (&a.columns[..], &a.filter)))
         .into_group_map()
         .into_iter()
-        // We sort for determinism:
-        .sorted_by_key(|(table, _)| *table)
+        .collect();
+    // We sort for determinism:
+    looking_tables.sort_by_key(|(table, _)| *table);
+    looking_tables.into_par_iter()
         .map(|(table, columns_filters)| {
             (
                 table,
