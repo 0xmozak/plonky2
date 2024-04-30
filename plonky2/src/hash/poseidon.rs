@@ -6,6 +6,8 @@ use alloc::{vec, vec::Vec};
 use core::fmt::Debug;
 
 use plonky2_field::packed::PackedField;
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 use unroll::unroll_for_loops;
 
 use crate::field::extension::{Extendable, FieldExtension};
@@ -801,7 +803,7 @@ pub trait Poseidon: PrimeField64 {
     }
 }
 
-#[derive(Copy, Clone, Default, Debug, PartialEq)]
+#[derive(Copy, Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PoseidonPermutation<T> {
     state: [T; SPONGE_WIDTH],
 }
@@ -830,8 +832,8 @@ impl Permuter for Target {
     }
 }
 
-impl<T: Copy + Debug + Default + Eq + Permuter + Send + Sync> PlonkyPermutation<T>
-    for PoseidonPermutation<T>
+impl<T: Copy + Debug + Default + Eq + Permuter + Send + Sync + Serialize + DeserializeOwned>
+    PlonkyPermutation<T> for PoseidonPermutation<T>
 {
     const RATE: usize = SPONGE_RATE;
     const WIDTH: usize = SPONGE_WIDTH;

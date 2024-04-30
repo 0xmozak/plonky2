@@ -6,10 +6,11 @@ use alloc::{vec, vec::Vec};
 use core::borrow::Borrow;
 use core::fmt::Debug;
 use core::iter::repeat;
+use core::ops::Neg;
 
 use itertools::Itertools;
 use num_bigint::BigUint;
-use plonky2::field::batch_util::batch_add_inplace;
+use plonky2::field::batch_util::{batch_add_inplace, batch_multiply_inplace};
 use plonky2::field::extension::{Extendable, FieldExtension};
 use plonky2::field::packed::PackedField;
 use plonky2::field::polynomial::PolynomialValues;
@@ -24,6 +25,7 @@ use plonky2::plonk::plonk_common::{
     reduce_with_powers, reduce_with_powers_circuit, reduce_with_powers_ext_circuit,
 };
 use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
+use serde::{Deserialize, Serialize};
 
 use crate::constraint_consumer::{ConstraintConsumer, RecursiveConstraintConsumer};
 use crate::evaluation_frame::StarkEvaluationFrame;
@@ -44,6 +46,21 @@ impl<F: Field> Default for Filter<F> {
         Self {
             products: vec![],
             constants: vec![Column::constant(F::ONE)],
+        }
+    }
+}
+
+impl<F: Field> Neg for Filter<F> {
+    type Output = Self;
+
+    fn neg(self) -> Self {
+        Self {
+            products: self
+                .products
+                .into_iter()
+                .map(|(c1, c2)| (c1, -c2))
+                .collect(),
+            constants: self.constants.into_iter().map(|c| -c).collect(),
         }
     }
 }
@@ -139,7 +156,41 @@ pub struct Column<F: Field> {
     constant: F,
 }
 
+impl<F: Field> Neg for Column<F> {
+    type Output = Self;
+
+    fn neg(self) -> Self {
+        Self {
+            linear_combination: self
+                .linear_combination
+                .into_iter()
+                .map(|(c, f)| (c, -f))
+                .collect(),
+            next_row_linear_combination: self
+                .next_row_linear_combination
+                .into_iter()
+                .map(|(c, f)| (c, -f))
+                .collect(),
+            constant: -self.constant,
+        }
+    }
+}
+
 impl<F: Field> Column<F> {
+    /// Returns a column from the provided linear combination and constant.
+    #[must_use]
+    pub fn new(
+        linear_combination: Vec<(usize, F)>,
+        next_row_linear_combination: Vec<(usize, F)>,
+        constant: F,
+    ) -> Self {
+        Self {
+            linear_combination,
+            next_row_linear_combination,
+            constant,
+        }
+    }
+
     /// Returns the representation of a single column in the current row.
     pub fn single(c: usize) -> Self {
         Self {
@@ -321,24 +372,16 @@ impl<F: Field> Column<F> {
 
     /// Evaluate on a row of a table given in column-major form.
     pub(crate) fn eval_table(&self, table: &[PolynomialValues<F>], row: usize) -> F {
-        let mut res = self
-            .linear_combination
+        self.linear_combination
             .iter()
             .map(|&(c, f)| table[c].values[row] * f)
             .sum::<F>()
-            + self.constant;
-
-        // If we access the next row at the last row, for sanity, we consider the next row's values to be 0.
-        // If the lookups are correctly written, the filter should be 0 in that case anyway.
-        if !self.next_row_linear_combination.is_empty() && row < table[0].values.len() - 1 {
-            res += self
+            + self
                 .next_row_linear_combination
                 .iter()
-                .map(|&(c, f)| table[c].values[row + 1] * f)
-                .sum::<F>();
-        }
-
-        res
+                .map(|&(c, f)| table[c].values[(row + 1) % table[c].values.len()] * f)
+                .sum::<F>()
+            + self.constant
     }
 
     /// Evaluates the column on all rows.
@@ -449,7 +492,8 @@ impl<F: Field> Lookup<F> {
 }
 
 /// Randomness for a single instance of a permutation check protocol.
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Deserialize, Serialize)]
+#[serde(bound = "T: for<'a> Deserialize<'a> + Serialize")]
 pub struct GrandProductChallenge<T: Copy + Eq + PartialEq + Debug> {
     /// Randomness used to combine multiple columns into one.
     pub beta: T,
@@ -496,7 +540,8 @@ impl GrandProductChallenge<Target> {
 }
 
 /// Like `GrandProductChallenge`, but with `num_challenges` copies to boost soundness.
-#[derive(Clone, Eq, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug, Deserialize, Serialize)]
+#[serde(bound = "T: for<'a> Deserialize<'a> + Serialize")]
 pub struct GrandProductChallengeSet<T: Copy + Eq + PartialEq + Debug> {
     /// A sequence of `num_challenges` challenge pairs, where `num_challenges`
     /// is defined in [`StarkConfig`][crate::config::StarkConfig].
@@ -761,79 +806,35 @@ pub(crate) fn get_helper_cols<F: Field>(
         .len()
         .div_ceil(constraint_degree.checked_sub(1).unwrap_or(1));
 
-    let mut helper_columns = Vec::with_capacity(num_helper_columns);
-
-    for mut cols_filts in &columns_filters
-        .iter()
-        .chunks(constraint_degree.checked_sub(1).unwrap_or(1))
-    {
-        let (first_col, first_filter) = cols_filts.next().unwrap();
-
-        let mut filter_col = Vec::with_capacity(degree);
-        let first_combined = (0..degree)
-            .map(|d| {
-                let f = {
-                    let f = first_filter.eval_table(trace, d);
-                    filter_col.push(f);
-                    f
-                };
-                if f.is_one() {
-                    let evals = first_col
-                        .iter()
-                        .map(|c| c.eval_table(trace, d))
+    let chunks = columns_filters.chunks(constraint_degree.checked_sub(1).unwrap_or(1));
+    let helper_columns: Vec<_> = chunks
+        .filter_map(|cols_filts| {
+            cols_filts
+                .iter()
+                .map(|(col, filter)| {
+                    let combined = (0..degree)
+                        .map(|d| {
+                            let evals = col
+                                .iter()
+                                .map(|c| c.eval_table(trace, d))
+                                .collect::<Vec<F>>();
+                            challenge.combine(&evals)
+                        })
                         .collect::<Vec<F>>();
-                    challenge.combine(evals.iter())
-                } else {
-                    assert_eq!(f, F::ZERO, "Non-binary filter?");
-                    // Dummy value. Cannot be zero since it will be batch-inverted.
-                    F::ONE
-                }
-            })
-            .collect::<Vec<F>>();
 
-        let mut acc = F::batch_multiplicative_inverse(&first_combined);
-        for d in 0..degree {
-            if filter_col[d].is_zero() {
-                acc[d] = F::ZERO;
-            }
-        }
-
-        for (col, filt) in cols_filts {
-            let mut filter_col = Vec::with_capacity(degree);
-            let mut combined = (0..degree)
-                .map(|d| {
-                    let f = {
-                        let f = filt.eval_table(trace, d);
-                        filter_col.push(f);
-                        f
-                    };
-                    if f.is_one() {
-                        let evals = col
-                            .iter()
-                            .map(|c| c.eval_table(trace, d))
-                            .collect::<Vec<F>>();
-                        challenge.combine(evals.iter())
-                    } else {
-                        assert_eq!(f, F::ZERO, "Non-binary filter?");
-                        // Dummy value. Cannot be zero since it will be batch-inverted.
-                        F::ONE
-                    }
+                    let mut combined = F::batch_multiplicative_inverse(&combined);
+                    let filter_col: Vec<_> =
+                        (0..degree).map(|d| filter.eval_table(trace, d)).collect();
+                    batch_multiply_inplace(&mut combined, &filter_col);
+                    combined
                 })
-                .collect::<Vec<F>>();
-
-            combined = F::batch_multiplicative_inverse(&combined);
-
-            for d in 0..degree {
-                if filter_col[d].is_zero() {
-                    combined[d] = F::ZERO;
-                }
-            }
-
-            batch_add_inplace(&mut acc, &combined);
-        }
-
-        helper_columns.push(acc.into());
-    }
+                .reduce(|mut acc, combined| {
+                    batch_add_inplace(&mut acc, &combined);
+                    acc
+                })
+                .map(PolynomialValues::from)
+        })
+        .collect();
     assert_eq!(helper_columns.len(), num_helper_columns);
 
     helper_columns
