@@ -2,6 +2,7 @@
 use alloc::vec::Vec;
 
 use anyhow::ensure;
+use itertools::Itertools;
 use plonky2_field::extension::{flatten, Extendable, FieldExtension};
 use plonky2_field::types::Field;
 
@@ -48,13 +49,17 @@ pub fn verify_batch_fri_proof<
         let pre = PrecomputedReducedOpenings::from_os_and_alpha(opn, challenges.fri_alpha);
         precomputed_reduced_evals.push(pre);
     }
+    let degree_logs = degree_logs
+        .iter()
+        .map(|d| d + params.config.rate_bits)
+        .collect_vec();
     for (&x_index, round_proof) in challenges
         .fri_query_indices
         .iter()
         .zip(&proof.query_round_proofs)
     {
         batch_fri_verifier_query_round::<F, C, D>(
-            degree_logs,
+            &degree_logs,
             instances,
             challenges,
             &precomputed_reduced_evals,

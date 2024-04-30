@@ -313,7 +313,7 @@ mod tests {
         let fri_opening_batch = FriOpeningBatch {
             values: vec![poly.to_extension::<D>().eval(zeta)],
         };
-        verify_batch_fri_proof::<GoldilocksField, C, 2>(
+        verify_batch_fri_proof::<GoldilocksField, C, D>(
             &[k],
             &[fri_instance],
             &[FriOpenings {
@@ -454,7 +454,7 @@ mod tests {
             fri_opening_batch_2,
         ];
 
-        verify_batch_fri_proof::<GoldilocksField, C, 2>(
+        verify_batch_fri_proof::<GoldilocksField, C, D>(
             &[k0, k1, k2],
             &fri_instances,
             &fri_openings,

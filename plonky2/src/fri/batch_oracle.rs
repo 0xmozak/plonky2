@@ -229,7 +229,7 @@ mod test {
         let fri_params = FriParams {
             config: FriConfig {
                 rate_bits: 1,
-                cap_height: 5,
+                cap_height: 0,
                 proof_of_work_bits: 0,
                 reduction_strategy: FriReductionStrategy::Fixed(reduction_arity_bits.clone()),
                 num_query_rounds: 10,
@@ -360,7 +360,7 @@ mod test {
             k0,
             &fri_params.config,
         );
-        verify_batch_fri_proof::<GoldilocksField, C, 2>(
+        verify_batch_fri_proof::<GoldilocksField, C, D>(
             &[k0, k1, k2],
             &fri_instances,
             &fri_openings,
