@@ -1,3 +1,6 @@
+#[cfg(not(feature = "std"))]
+use alloc::vec;
+
 use anyhow::ensure;
 
 use crate::field::extension::Extendable;
@@ -93,15 +96,16 @@ where
             steps,
         } = query_round;
 
-        let mut leaf_len = 0;
+        let oracle_count = initial_trees_proof.evals_proofs.len();
+        let mut leaf_len = vec![0; oracle_count];
         for inst in instances {
-            ensure!(initial_trees_proof.evals_proofs.len() == inst.oracles.len());
-            for oracle in &inst.oracles {
-                leaf_len += oracle.num_polys + salt_size(oracle.blinding && params.hiding);
+            ensure!(oracle_count == inst.oracles.len());
+            for (i, oracle) in inst.oracles.iter().enumerate() {
+                leaf_len[i] += oracle.num_polys + salt_size(oracle.blinding && params.hiding);
             }
         }
-        for (leaf, merkle_proof) in initial_trees_proof.evals_proofs.iter() {
-            ensure!(leaf.len() == leaf_len);
+        for (i, (leaf, merkle_proof)) in initial_trees_proof.evals_proofs.iter().enumerate() {
+            ensure!(leaf.len() == leaf_len[i]);
             ensure!(merkle_proof.len() + cap_height == params.lde_bits());
         }
 
