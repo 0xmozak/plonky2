@@ -264,14 +264,11 @@ mod test {
         let mut challenger = Challenger::<F, H>::new();
         challenger.observe_cap(&trace_oracle.field_merkle_tree.cap);
         let zeta = challenger.get_extension_challenge::<D>();
+        let eta = challenger.get_extension_challenge::<D>();
         let poly0 = &trace_oracle.polynomials[0];
         let poly1_0 = &trace_oracle.polynomials[1];
         let poly1_1 = &trace_oracle.polynomials[2];
         let poly2 = &trace_oracle.polynomials[3];
-        challenger.observe_extension_element::<D>(&poly0.to_extension::<D>().eval(zeta));
-        challenger.observe_extension_element::<D>(&poly1_0.to_extension::<D>().eval(zeta));
-        challenger.observe_extension_element::<D>(&poly1_1.to_extension::<D>().eval(zeta));
-        challenger.observe_extension_element::<D>(&poly2.to_extension::<D>().eval(zeta));
         let mut verifier_challenger = challenger.clone();
 
         let fri_instance_0 = FriInstanceInfo {
@@ -279,32 +276,50 @@ mod test {
                 num_polys: 1,
                 blinding: false,
             }],
-            batches: vec![FriBatchInfo {
-                point: zeta,
-                polynomials: vec![FriPolynomialInfo {
-                    oracle_index: 0,
-                    polynomial_index: 0,
-                }],
-            }],
+            batches: vec![
+                FriBatchInfo {
+                    point: zeta,
+                    polynomials: vec![FriPolynomialInfo {
+                        oracle_index: 0,
+                        polynomial_index: 0,
+                    }],
+                },
+                FriBatchInfo {
+                    point: eta,
+                    polynomials: vec![FriPolynomialInfo {
+                        oracle_index: 0,
+                        polynomial_index: 0,
+                    }],
+                },
+            ],
         };
         let fri_instance_1 = FriInstanceInfo {
             oracles: vec![FriOracleInfo {
                 num_polys: 2,
                 blinding: false,
             }],
-            batches: vec![FriBatchInfo {
-                point: zeta,
-                polynomials: vec![
-                    FriPolynomialInfo {
-                        oracle_index: 0,
-                        polynomial_index: 1,
-                    },
-                    FriPolynomialInfo {
+            batches: vec![
+                FriBatchInfo {
+                    point: zeta,
+                    polynomials: vec![
+                        FriPolynomialInfo {
+                            oracle_index: 0,
+                            polynomial_index: 1,
+                        },
+                        FriPolynomialInfo {
+                            oracle_index: 0,
+                            polynomial_index: 2,
+                        },
+                    ],
+                },
+                FriBatchInfo {
+                    point: eta,
+                    polynomials: vec![FriPolynomialInfo {
                         oracle_index: 0,
                         polynomial_index: 2,
-                    },
-                ],
-            }],
+                    }],
+                },
+            ],
         };
         let fri_instance_2 = FriInstanceInfo {
             oracles: vec![FriOracleInfo {
@@ -321,17 +336,27 @@ mod test {
         };
         let fri_instances = vec![fri_instance_0, fri_instance_1, fri_instance_2];
         let fri_opening_batch_0 = FriOpenings {
-            batches: vec![FriOpeningBatch {
-                values: vec![poly0.to_extension::<D>().eval(zeta)],
-            }],
+            batches: vec![
+                FriOpeningBatch {
+                    values: vec![poly0.to_extension::<D>().eval(zeta)],
+                },
+                FriOpeningBatch {
+                    values: vec![poly0.to_extension::<D>().eval(eta)],
+                },
+            ],
         };
         let fri_opening_batch_1 = FriOpenings {
-            batches: vec![FriOpeningBatch {
-                values: vec![
-                    poly1_0.to_extension::<D>().eval(zeta),
-                    poly1_1.to_extension::<D>().eval(zeta),
-                ],
-            }],
+            batches: vec![
+                FriOpeningBatch {
+                    values: vec![
+                        poly1_0.to_extension::<D>().eval(zeta),
+                        poly1_1.to_extension::<D>().eval(zeta),
+                    ],
+                },
+                FriOpeningBatch {
+                    values: vec![poly1_1.to_extension::<D>().eval(eta)],
+                },
+            ],
         };
         let fri_opening_batch_2 = FriOpenings {
             batches: vec![FriOpeningBatch {
