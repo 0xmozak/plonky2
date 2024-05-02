@@ -213,7 +213,6 @@ pub fn split_and_fold_poly_values<F: RichField + Extendable<D>, const D: usize>(
     let arity = 1 << arity_bits;
     let degree_bits = log2_strict(poly.values.len());
     let result_len = poly.values.len() >> arity_bits;
-    let mut folded_values = Vec::with_capacity(result_len);
 
     let gi_s = F::primitive_root_of_unity(degree_bits)
         .powers()
@@ -221,7 +220,7 @@ pub fn split_and_fold_poly_values<F: RichField + Extendable<D>, const D: usize>(
         .take(result_len)
         .collect_vec();
     assert_eq!(result_len * arity, poly.values.len());
-    (0..result_len)
+    let folded_values = (0..result_len)
         .into_par_iter()
         .map(|i| {
             let chunk = (0..arity)
@@ -230,7 +229,7 @@ pub fn split_and_fold_poly_values<F: RichField + Extendable<D>, const D: usize>(
             let poly_coeffs = PolynomialValues::new(chunk).ifft();
             poly_coeffs.eval(beta * gi_s[i].into())
         })
-        .collect_into_vec(&mut folded_values);
+        .collect();
     *shift = shift.exp_u64(arity as u64);
     *poly = PolynomialValues::new(folded_values);
 }
