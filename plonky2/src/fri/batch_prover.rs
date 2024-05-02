@@ -4,7 +4,7 @@ use alloc::vec::Vec;
 use itertools::{zip_eq, Itertools};
 use plonky2_field::extension::flatten;
 use plonky2_maybe_rayon::*;
-use plonky2_util::reverse_index_bits_in_place;
+use plonky2_util::{log2_strict, reverse_index_bits_in_place};
 
 use crate::field::extension::{unflatten, Extendable};
 use crate::field::polynomial::{PolynomialCoeffs, PolynomialValues};
@@ -107,8 +107,8 @@ pub(crate) fn batch_fri_committed_trees<
                 .map(|chunk| reduce_with_powers(chunk, beta))
                 .collect::<Vec<_>>(),
         );
-        shift = shift.exp_u64(arity as u64);
-        final_values = final_coeffs.coset_fft(shift.into());
+        reverse_index_bits_in_place(&mut final_values.values);
+        split_and_fold_poly_values(&mut final_values, arity_bits, beta, &mut shift);
         if polynomial_index != values.len() && final_values.len() == values[polynomial_index].len()
         {
             final_values = PolynomialValues::new(
@@ -206,18 +206,17 @@ fn batch_fri_prover_query_round<
 }
 
 pub fn split_and_fold_poly_values<F: RichField + Extendable<D>, const D: usize>(
-    poly: PolynomialValues<F::Extension>,
-    degree_bits: &mut usize,
-    arity_bits: usize,
+    poly: &mut PolynomialValues<F::Extension>,
+    arity_bits: &usize,
     beta: F::Extension,
     shift: &mut F,
-) -> PolynomialValues<F::Extension> {
+) {
     let arity = 1 << arity_bits;
-    assert_eq!(1 << *degree_bits, poly.values.len());
+    let degree_bits = log2_strict(poly.values.len());
     let result_len = poly.values.len() >> arity_bits;
     let mut folded_values = Vec::with_capacity(result_len);
 
-    let gi_s = F::primitive_root_of_unity(*degree_bits)
+    let gi_s = F::primitive_root_of_unity(degree_bits)
         .powers()
         .map(|p| (*shift * p).inverse())
         .take(result_len)
@@ -234,8 +233,7 @@ pub fn split_and_fold_poly_values<F: RichField + Extendable<D>, const D: usize>(
         })
         .collect_into_vec(&mut folded_values);
     *shift = shift.exp_u64(arity as u64);
-    *degree_bits -= arity_bits;
-    PolynomialValues::new(folded_values)
+    *poly = PolynomialValues::new(folded_values);
 }
 
 #[cfg(test)]
@@ -269,7 +267,7 @@ mod tests {
 
     #[test]
     fn test_split_and_fold() {
-        let mut degree_bits = 12;
+        let degree_bits = 12;
         let arity_bits_1 = 5;
         let arity_bits_2 = 4;
         let arities = [arity_bits_1, arity_bits_2];
@@ -290,13 +288,7 @@ mod tests {
                     .map(|chunk| reduce_with_powers(chunk, beta))
                     .collect::<Vec<_>>(),
             );
-            poly = split_and_fold_poly_values::<F, D>(
-                poly,
-                &mut degree_bits,
-                arity_bits,
-                beta,
-                &mut shift,
-            );
+            split_and_fold_poly_values::<F, D>(&mut poly, &arity_bits, beta, &mut shift);
             assert_eq!(poly, poly_coeffs.coset_fft(shift.into()));
         }
     }
