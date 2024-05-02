@@ -25,7 +25,7 @@ pub fn verify_batch_fri_proof<
     C: GenericConfig<D, F = F>,
     const D: usize,
 >(
-    degree_logs: &[usize],
+    degree_bits: &[usize],
     instances: &[FriInstanceInfo<F, D>],
     openings: &[FriOpenings<F, D>],
     challenges: &FriChallenges<F, D>,
@@ -49,7 +49,7 @@ pub fn verify_batch_fri_proof<
         let pre = PrecomputedReducedOpenings::from_os_and_alpha(opn, challenges.fri_alpha);
         precomputed_reduced_evals.push(pre);
     }
-    let degree_logs = degree_logs
+    let degree_bits = degree_bits
         .iter()
         .map(|d| d + params.config.rate_bits)
         .collect_vec();
@@ -59,7 +59,7 @@ pub fn verify_batch_fri_proof<
         .zip(&proof.query_round_proofs)
     {
         batch_fri_verifier_query_round::<F, C, D>(
-            &degree_logs,
+            &degree_bits,
             instances,
             challenges,
             &precomputed_reduced_evals,
@@ -75,7 +75,7 @@ pub fn verify_batch_fri_proof<
 }
 
 fn batch_fri_verify_initial_proof<F: RichField + Extendable<D>, H: Hasher<F>, const D: usize>(
-    degree_logs: &[usize],
+    degree_bits: &[usize],
     instances: &[FriInstanceInfo<F, D>],
     x_index: usize,
     proof: &FriInitialTreeProof<F, H>,
@@ -99,7 +99,7 @@ fn batch_fri_verify_initial_proof<F: RichField + Extendable<D>, H: Hasher<F>, co
             })
             .collect::<Vec<_>>();
 
-        verify_field_merkle_proof_to_cap::<F, H>(&leaves, degree_logs, x_index, cap, merkle_proof)?;
+        verify_field_merkle_proof_to_cap::<F, H>(&leaves, degree_bits, x_index, cap, merkle_proof)?;
     }
 
     Ok(())
@@ -152,7 +152,7 @@ fn batch_fri_verifier_query_round<
     C: GenericConfig<D, F = F>,
     const D: usize,
 >(
-    degree_logs: &[usize],
+    degree_bits: &[usize],
     instances: &[FriInstanceInfo<F, D>],
     challenges: &FriChallenges<F, D>,
     precomputed_reduced_evals: &[PrecomputedReducedOpenings<F, D>],
@@ -163,13 +163,13 @@ fn batch_fri_verifier_query_round<
     params: &FriParams,
 ) -> anyhow::Result<()> {
     batch_fri_verify_initial_proof::<F, C::Hasher, D>(
-        degree_logs,
+        degree_bits,
         instances,
         x_index,
         &round_proof.initial_trees_proof,
         initial_merkle_caps,
     )?;
-    let mut n = degree_logs[0] + params.config.rate_bits;
+    let mut n = degree_bits[0] + params.config.rate_bits;
     // `subgroup_x` is `subgroup[x_index]`, i.e., the actual field element in the domain.
     let mut subgroup_x = F::MULTIPLICATIVE_GROUP_GENERATOR
         * F::primitive_root_of_unity(n).exp_u64(reverse_bits(x_index, n) as u64);
@@ -218,8 +218,8 @@ fn batch_fri_verifier_query_round<
         x_index = coset_index;
         n -= arity_bits;
 
-        if batch_index < degree_logs.len()
-            && n == degree_logs[batch_index] + params.config.rate_bits
+        if batch_index < degree_bits.len()
+            && n == degree_bits[batch_index] + params.config.rate_bits
         {
             let eval = batch_fri_combine_initial::<F, C, D>(
                 instances,
