@@ -31,7 +31,8 @@ pub struct BatchFriOracle<F: RichField + Extendable<D>, C: GenericConfig<D, F = 
 {
     pub polynomials: Vec<PolynomialCoeffs<F>>,
     pub field_merkle_tree: FieldMerkleTree<F, C::Hasher>,
-    pub degree_logs: Vec<usize>,
+    // The degree bits of each polynomial.
+    pub degree_bits: Vec<usize>,
     pub rate_bits: usize,
     pub blinding: bool,
 }
@@ -73,27 +74,27 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         timing: &mut TimingTree,
         fft_root_table: &[Option<&FftRootTable<F>>],
     ) -> Self {
-        let mut degree_logs = polynomials
+        let degree_bits = polynomials
             .iter()
             .map(|p| log2_strict(p.len()))
             .collect_vec();
-        assert!(degree_logs.windows(2).all(|pair| { pair[0] >= pair[1] }));
-        let max_degree_log = degree_logs[0];
+        assert!(degree_bits.windows(2).all(|pair| { pair[0] >= pair[1] }));
+        let max_degree_bits = degree_bits[0];
 
         let num_polynomials = polynomials.len();
         let mut group_start = 0;
         let mut leaves = Vec::new();
         let shift = F::coset_shift();
 
-        for (i, d) in degree_logs.iter().enumerate() {
-            if i == num_polynomials - 1 || *d > degree_logs[i + 1] {
+        for (i, d) in degree_bits.iter().enumerate() {
+            if i == num_polynomials - 1 || *d > degree_bits[i + 1] {
                 let lde_values = timed!(
                     timing,
                     "FFT + blinding",
                     PolynomialBatch::<F, C, D>::lde_values(
                         &polynomials[group_start..i + 1],
                         rate_bits,
-                        shift.exp_power_of_2(max_degree_log - d),
+                        shift.exp_power_of_2(max_degree_bits - d),
                         blinding,
                         fft_root_table[i]
                     )
@@ -113,14 +114,14 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
             FieldMerkleTree::new(leaves, cap_height)
         );
 
-        degree_logs.sort_unstable();
-        degree_logs.dedup();
-        degree_logs.reverse();
-        assert_eq!(field_merkle_tree.leaves.len(), degree_logs.len());
+        degree_bits.sort_unstable();
+        degree_bits.dedup();
+        degree_bits.reverse();
+        assert_eq!(field_merkle_tree.leaves.len(), degree_bits.len());
         Self {
             polynomials,
             field_merkle_tree,
-            degree_logs,
+            degree_bits,
             rate_bits,
             blinding,
         }
