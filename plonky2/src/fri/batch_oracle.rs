@@ -4,6 +4,7 @@ use alloc::{format, vec::Vec};
 use itertools::Itertools;
 use plonky2_field::extension::Extendable;
 use plonky2_field::fft::FftRootTable;
+use plonky2_field::packed::PackedField;
 use plonky2_field::polynomial::{PolynomialCoeffs, PolynomialValues};
 use plonky2_field::types::Field;
 use plonky2_maybe_rayon::*;
@@ -21,7 +22,7 @@ use crate::plonk::config::GenericConfig;
 use crate::timed;
 use crate::util::reducing::ReducingFactor;
 use crate::util::timing::TimingTree;
-use crate::util::transpose;
+use crate::util::{reverse_bits, transpose};
 
 /// Represents a batch FRI oracle, i.e. a batch of polynomials with different degrees which have
 /// been Merkle-ized in a Field Merkle Tree.
@@ -72,7 +73,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         timing: &mut TimingTree,
         fft_root_table: &[Option<&FftRootTable<F>>],
     ) -> Self {
-        let degree_logs = polynomials
+        let mut degree_logs = polynomials
             .iter()
             .map(|p| log2_strict(p.len()))
             .collect_vec();
@@ -112,6 +113,10 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
             FieldMerkleTree::new(leaves, cap_height)
         );
 
+        degree_logs.sort_unstable();
+        degree_logs.dedup();
+        degree_logs.reverse();
+        assert_eq!(field_merkle_tree.leaves.len(), degree_logs.len());
         Self {
             polynomials,
             field_merkle_tree,
@@ -190,6 +195,54 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
             fri_params,
             timing,
         )
+    }
+
+    /// Fetches LDE values at the `index * step`th point.
+    pub fn get_lde_values(
+        &self,
+        leaf_index: usize,
+        index: usize,
+        step: usize,
+        slice_start: usize,
+        slice_len: usize,
+    ) -> &[F] {
+        let index = index * step;
+        let index = reverse_bits(index, self.degree_logs[leaf_index] + self.rate_bits);
+        let slice = &self.field_merkle_tree.leaves[leaf_index][index];
+        &slice[slice_start..slice_start + slice_len]
+    }
+
+    /// Like `get_lde_values`, but fetches LDE values from a batch of `P::WIDTH` points, and returns
+    /// packed values.
+    pub fn get_lde_values_packed<P>(
+        &self,
+        leaf_index: usize,
+        index_start: usize,
+        step: usize,
+        slice_start: usize,
+        slice_len: usize,
+    ) -> Vec<P>
+    where
+        P: PackedField<Scalar = F>,
+    {
+        let row_wise = (0..P::WIDTH)
+            .map(|i| self.get_lde_values(leaf_index, index_start + i, step, slice_start, slice_len))
+            .collect_vec();
+
+        // This is essentially a transpose, but we will not use the generic transpose method as we
+        // want inner lists to be of type P, not Vecs which would involve allocation.
+        let leaf_size = row_wise[0].len();
+        (0..leaf_size)
+            .map(|j| {
+                let mut packed = P::ZEROS;
+                packed
+                    .as_slice_mut()
+                    .iter_mut()
+                    .zip(&row_wise)
+                    .for_each(|(packed_i, row_i)| *packed_i = row_i[j]);
+                packed
+            })
+            .collect_vec()
     }
 }
 
