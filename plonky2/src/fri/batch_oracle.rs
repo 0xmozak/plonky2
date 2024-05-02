@@ -74,7 +74,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         timing: &mut TimingTree,
         fft_root_table: &[Option<&FftRootTable<F>>],
     ) -> Self {
-        let degree_bits = polynomials
+        let mut degree_bits = polynomials
             .iter()
             .map(|p| log2_strict(p.len()))
             .collect_vec();
@@ -208,7 +208,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         slice_len: usize,
     ) -> &[F] {
         let index = index * step;
-        let index = reverse_bits(index, self.degree_logs[leaf_index] + self.rate_bits);
+        let index = reverse_bits(index, self.degree_bits[leaf_index] + self.rate_bits);
         let slice = &self.field_merkle_tree.leaves[leaf_index][index];
         &slice[slice_start..slice_start + slice_len]
     }
