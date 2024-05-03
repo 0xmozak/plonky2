@@ -2,7 +2,6 @@
 use alloc::{format, vec::Vec};
 
 use itertools::Itertools;
-use log::info;
 use plonky2_field::extension::Extendable;
 use plonky2_field::fft::FftRootTable;
 use plonky2_field::packed::PackedField;
