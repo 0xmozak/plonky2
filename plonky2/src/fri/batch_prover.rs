@@ -1,10 +1,10 @@
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
-use itertools::zip_eq;
+use itertools::{zip_eq, Itertools};
 use plonky2_field::extension::flatten;
 use plonky2_maybe_rayon::*;
-use plonky2_util::reverse_index_bits_in_place;
+use plonky2_util::{log2_strict, reverse_index_bits_in_place};
 
 use crate::field::extension::{unflatten, Extendable};
 use crate::field::polynomial::{PolynomialCoeffs, PolynomialValues};
@@ -107,8 +107,8 @@ pub(crate) fn batch_fri_committed_trees<
                 .map(|chunk| reduce_with_powers(chunk, beta))
                 .collect::<Vec<_>>(),
         );
-        shift = shift.exp_u64(arity as u64);
-        final_values = final_coeffs.coset_fft(shift.into());
+        reverse_index_bits_in_place(&mut final_values.values);
+        split_and_fold_poly_values(&mut final_values, arity_bits, beta, &mut shift);
         if polynomial_index != values.len() && final_values.len() == values[polynomial_index].len()
         {
             final_values = PolynomialValues::new(
@@ -134,7 +134,6 @@ pub(crate) fn batch_fri_committed_trees<
     challenger.observe_extension_elements(&final_coeffs.coeffs);
     (trees, final_coeffs)
 }
-
 fn batch_fri_prover_query_rounds<
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
@@ -205,6 +204,36 @@ fn batch_fri_prover_query_round<
     }
 }
 
+pub fn split_and_fold_poly_values<F: RichField + Extendable<D>, const D: usize>(
+    poly: &mut PolynomialValues<F::Extension>,
+    arity_bits: &usize,
+    beta: F::Extension,
+    shift: &mut F,
+) {
+    let arity = 1 << arity_bits;
+    let degree_bits = log2_strict(poly.values.len());
+    let result_len = poly.values.len() >> arity_bits;
+
+    let gi_s = F::primitive_root_of_unity(degree_bits)
+        .powers()
+        .map(|p| (*shift * p).inverse())
+        .take(result_len)
+        .collect_vec();
+    assert_eq!(result_len * arity, poly.values.len());
+    let folded_values = (0..result_len)
+        .into_par_iter()
+        .map(|i| {
+            let chunk = (0..arity)
+                .map(|j| poly.values[i + j * result_len])
+                .collect_vec();
+            let poly_coeffs = PolynomialValues::new(chunk).ifft();
+            poly_coeffs.eval(beta * gi_s[i].into())
+        })
+        .collect();
+    *shift = shift.exp_u64(arity as u64);
+    *poly = PolynomialValues::new(folded_values);
+}
+
 #[cfg(test)]
 mod tests {
     #[cfg(not(feature = "std"))]
@@ -232,6 +261,35 @@ mod tests {
     type C = PoseidonGoldilocksConfig;
     type F = <C as GenericConfig<D>>::F;
     type H = <C as GenericConfig<D>>::Hasher;
+    type FE = <F as Extendable<D>>::Extension;
+
+    #[test]
+    fn test_split_and_fold() {
+        let degree_bits = 12;
+        let arity_bits_1 = 5;
+        let arity_bits_2 = 4;
+        let arities = [arity_bits_1, arity_bits_2];
+
+        let n = 1 << degree_bits;
+
+        let mut shift = F::coset_shift();
+
+        let mut poly = PolynomialValues::new(FE::rand_vec(n));
+        let mut poly_coeffs = poly.clone().coset_ifft(shift.into());
+
+        for arity_bits in arities {
+            let beta = FE::rand();
+            poly_coeffs = PolynomialCoeffs::new(
+                poly_coeffs
+                    .coeffs
+                    .par_chunks_exact(1 << arity_bits)
+                    .map(|chunk| reduce_with_powers(chunk, beta))
+                    .collect::<Vec<_>>(),
+            );
+            split_and_fold_poly_values::<F, D>(&mut poly, &arity_bits, beta, &mut shift);
+            assert_eq!(poly, poly_coeffs.coset_fft(shift.into()));
+        }
+    }
 
     #[test]
     fn single_polynomial() -> Result<()> {
