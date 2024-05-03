@@ -2,6 +2,7 @@
 use alloc::{format, vec::Vec};
 
 use itertools::Itertools;
+use log::info;
 use plonky2_field::extension::Extendable;
 use plonky2_field::fft::FftRootTable;
 use plonky2_field::packed::PackedField;
@@ -31,7 +32,7 @@ pub struct BatchFriOracle<F: RichField + Extendable<D>, C: GenericConfig<D, F = 
 {
     pub polynomials: Vec<PolynomialCoeffs<F>>,
     pub field_merkle_tree: FieldMerkleTree<F, C::Hasher>,
-    // The degree bits of each polynomial.
+    // The degree bits of each polynomial group.
     pub degree_bits: Vec<usize>,
     pub rate_bits: usize,
     pub blinding: bool,
