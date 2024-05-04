@@ -194,15 +194,15 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
     /// Fetches LDE values at the `index * step`th point.
     pub fn get_lde_values(
         &self,
-        leaf_index: usize,
+        degree_bits_index: usize,
         index: usize,
         step: usize,
         slice_start: usize,
         slice_len: usize,
     ) -> &[F] {
         let index = index * step;
-        let index = reverse_bits(index, self.degree_bits[leaf_index] + self.rate_bits);
-        let slice = &self.field_merkle_tree.leaves[leaf_index][index];
+        let index = reverse_bits(index, self.degree_bits[degree_bits_index] + self.rate_bits);
+        let slice = &self.field_merkle_tree.leaves[degree_bits_index][index];
         &slice[slice_start..slice_start + slice_len]
     }
 
@@ -210,7 +210,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
     /// packed values.
     pub fn get_lde_values_packed<P>(
         &self,
-        leaf_index: usize,
+        degree_bits_index: usize,
         index_start: usize,
         step: usize,
         slice_start: usize,
@@ -220,7 +220,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         P: PackedField<Scalar = F>,
     {
         let row_wise = (0..P::WIDTH)
-            .map(|i| self.get_lde_values(leaf_index, index_start + i, step, slice_start, slice_len))
+            .map(|i| self.get_lde_values(degree_bits_index, index_start + i, step, slice_start, slice_len))
             .collect_vec();
 
         // This is essentially a transpose, but we will not use the generic transpose method as we
