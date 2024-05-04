@@ -220,7 +220,15 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         P: PackedField<Scalar = F>,
     {
         let row_wise = (0..P::WIDTH)
-            .map(|i| self.get_lde_values(degree_bits_index, index_start + i, step, slice_start, slice_len))
+            .map(|i| {
+                self.get_lde_values(
+                    degree_bits_index,
+                    index_start + i,
+                    step,
+                    slice_start,
+                    slice_len,
+                )
+            })
             .collect_vec();
 
         // This is essentially a transpose, but we will not use the generic transpose method as we
