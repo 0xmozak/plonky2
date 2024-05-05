@@ -90,13 +90,6 @@ pub fn verify_field_merkle_proof_to_cap<F: RichField, H: Hasher<F>>(
     let mut current_height = leaf_heights[0];
     let mut leaf_data_index = 1;
     for &sibling_digest in proof.siblings.iter() {
-        if leaf_data_index < leaf_heights.len() && current_height == leaf_heights[leaf_data_index] {
-            let mut new_leaves = current_digest.to_vec();
-            new_leaves.extend_from_slice(&leaf_data[leaf_data_index]);
-            current_digest = H::hash_or_noop(&new_leaves);
-            leaf_data_index += 1;
-        }
-
         let bit = leaf_index & 1;
         leaf_index >>= 1;
         current_digest = if bit == 1 {
@@ -105,7 +98,15 @@ pub fn verify_field_merkle_proof_to_cap<F: RichField, H: Hasher<F>>(
             H::two_to_one(current_digest, sibling_digest)
         };
         current_height -= 1;
+
+        if leaf_data_index < leaf_heights.len() && current_height == leaf_heights[leaf_data_index] {
+            let mut new_leaves = current_digest.to_vec();
+            new_leaves.extend_from_slice(&leaf_data[leaf_data_index]);
+            current_digest = H::hash_or_noop(&new_leaves);
+            leaf_data_index += 1;
+        }
     }
+    assert_eq!(leaf_data_index, leaf_data.len());
     ensure!(
         current_digest == merkle_cap.0[leaf_index],
         "Invalid Merkle proof."

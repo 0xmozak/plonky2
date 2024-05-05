@@ -314,4 +314,24 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    fn test_field_merkle_trees_cap_at_leaves_height() -> Result<()> {
+        let leaves_1 = crate::hash::merkle_tree::tests::random_data::<F>(16, 7);
+
+        let fmt: FieldMerkleTree<GoldilocksField, H> = FieldMerkleTree::new(vec![leaves_1], 4);
+        for index in 0..16 {
+            let proof = fmt.open_batch(index);
+            let opened_values = fmt.values(index);
+            verify_field_merkle_proof_to_cap(
+                &opened_values,
+                &fmt.leaf_heights,
+                index,
+                &fmt.cap,
+                &proof,
+            )?;
+        }
+
+        Ok(())
+    }
 }
