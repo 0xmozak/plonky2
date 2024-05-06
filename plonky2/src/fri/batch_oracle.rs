@@ -84,6 +84,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         let mut group_start = 0;
         let mut leaves = Vec::new();
         let shift = F::coset_shift();
+        let lde_shift = shift.exp_power_of_2(rate_bits).inverse();
 
         for (i, d) in degree_bits.iter().enumerate() {
             if i == num_polynomials - 1 || *d > degree_bits[i + 1] {
@@ -93,7 +94,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
                     PolynomialBatch::<F, C, D>::lde_values(
                         &polynomials[group_start..i + 1],
                         rate_bits,
-                        shift.exp_power_of_2(max_degree_bits - d),
+                        shift.exp_power_of_2(max_degree_bits - d) * lde_shift,
                         blinding,
                         fft_root_table[i]
                     )
