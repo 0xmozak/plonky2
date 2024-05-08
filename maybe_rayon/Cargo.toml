@@ -11,6 +11,8 @@ categories.workspace = true
 
 [features]
 parallel = ["rayon"]
+std = []
+default = ["std"]
 
 [dependencies]
 rayon = { version = "1.8.1", optional = true }
