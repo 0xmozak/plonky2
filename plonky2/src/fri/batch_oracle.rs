@@ -268,7 +268,7 @@ mod test {
     use crate::fri::FriConfig;
     use crate::hash::hash_types::MerkleCapTarget;
     use crate::iop::challenger::RecursiveChallenger;
-    use crate::iop::witness::{PartialWitness};
+    use crate::iop::witness::PartialWitness;
     use crate::plonk::circuit_builder::CircuitBuilder;
     use crate::plonk::circuit_data::CircuitConfig;
     use crate::plonk::config::PoseidonGoldilocksConfig;
@@ -455,12 +455,12 @@ mod test {
             &[trace_oracle.field_merkle_tree.cap],
             &proof,
             &fri_params,
-        );
+        )?;
 
         // test recursive verifier
         let config = CircuitConfig::standard_recursion_config();
         let mut builder = CircuitBuilder::<F, D>::new(config.clone());
-        let num_leaves_per_oracle = vec![1, 2, 1];
+        let num_leaves_per_oracle = vec![4];
         let fri_proof_target = builder.add_virtual_fri_proof(&num_leaves_per_oracle, &fri_params);
         let fri_instance_info_target = [FriInstanceInfoTarget {
             oracles: vec![],

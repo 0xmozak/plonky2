@@ -2,11 +2,9 @@
 use alloc::{format, vec::Vec};
 
 use crate::field::extension::Extendable;
-use crate::fri::proof::{
-    FriChallengesTarget, FriProofTarget,
-};
-use crate::fri::structure::{ FriInstanceInfoTarget, FriOpeningsTarget};
-use crate::fri::{ FriParams};
+use crate::fri::proof::{FriChallengesTarget, FriProofTarget};
+use crate::fri::structure::{FriInstanceInfoTarget, FriOpeningsTarget};
+use crate::fri::FriParams;
 use crate::hash::hash_types::{MerkleCapTarget, RichField};
 use crate::plonk::circuit_builder::CircuitBuilder;
 use crate::plonk::config::{AlgebraicHasher, GenericConfig};
