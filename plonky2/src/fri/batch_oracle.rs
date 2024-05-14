@@ -254,7 +254,6 @@ mod test {
     use alloc::vec;
 
     use plonky2_field::goldilocks_field::GoldilocksField;
-    use plonky2_field::types::Sample;
 
     use super::*;
     use crate::fri::batch_oracle::BatchFriOracle;
@@ -266,7 +265,6 @@ mod test {
     };
     use crate::fri::witness_util::set_fri_proof_target;
     use crate::fri::FriConfig;
-    use crate::hash::hash_types::MerkleCapTarget;
     use crate::iop::challenger::RecursiveChallenger;
     use crate::iop::witness::PartialWitness;
     use crate::plonk::circuit_builder::CircuitBuilder;

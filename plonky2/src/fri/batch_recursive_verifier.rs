@@ -2,19 +2,16 @@
 use alloc::{format, vec::Vec};
 
 use itertools::Itertools;
-use plonky2_util::log2_strict;
 
 use crate::field::extension::Extendable;
 use crate::fri::proof::{
     FriChallengesTarget, FriInitialTreeProofTarget, FriProofTarget, FriQueryRoundTarget,
 };
 use crate::fri::recursive_verifier::PrecomputedReducedOpeningsTarget;
-use crate::fri::structure::{
-    FriBatchInfoTarget, FriInstanceInfo, FriInstanceInfoTarget, FriOpeningsTarget,
-};
+use crate::fri::structure::{FriBatchInfoTarget, FriInstanceInfoTarget, FriOpeningsTarget};
 use crate::fri::FriParams;
 use crate::hash::hash_types::{MerkleCapTarget, RichField};
-use crate::iop::ext_target::ExtensionTarget;
+use crate::iop::ext_target::{flatten_target, ExtensionTarget};
 use crate::iop::target::{BoolTarget, Target};
 use crate::plonk::circuit_builder::CircuitBuilder;
 use crate::plonk::config::{AlgebraicHasher, GenericConfig};
@@ -43,9 +40,6 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
             proof.final_poly.len(),
             "Final polynomial has wrong degree."
         );
-
-        // Size of the LDE domain.
-        let n = params.lde_size();
 
         with_context!(
             self,
@@ -101,11 +95,13 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
                     initial_merkle_caps,
                     proof,
                     challenges.fri_query_indices[i],
-                    n,
                     round_proof,
                     params,
                 )
             );
+
+            // TODO: remove
+            return;
         }
     }
 
@@ -205,18 +201,17 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         initial_merkle_caps: &[MerkleCapTarget],
         proof: &FriProofTarget<D>,
         x_index: Target,
-        n: usize,
         round_proof: &FriQueryRoundTarget<D>,
         params: &FriParams,
     ) where
         C::Hasher: AlgebraicHasher<F>,
     {
-        let n_log = log2_strict(n);
+        let mut n = degree_bits[0] + params.config.rate_bits;
 
         // Note that this `low_bits` decomposition permits non-canonical binary encodings. Here we
         // verify that this has a negligible impact on soundness error.
         Self::assert_noncanonical_indices_ok(&params.config);
-        let mut x_index_bits = self.low_bits(x_index, n_log, F::BITS);
+        let mut x_index_bits = self.low_bits(x_index, n, F::BITS);
 
         let cap_index =
             self.le_sum(x_index_bits[x_index_bits.len() - params.config.cap_height..].iter());
@@ -233,84 +228,115 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
             )
         );
 
-        //
-        // // `subgroup_x` is `subgroup[x_index]`, i.e., the actual field element in the domain.
-        // let mut subgroup_x = with_context!(self, "compute x from its index", {
-        //     let g = self.constant(F::coset_shift());
-        //     let phi = F::primitive_root_of_unity(n_log);
-        //     let phi = self.exp_from_bits_const_base(phi, x_index_bits.iter().rev());
-        //     // subgroup_x = g * phi
-        //     self.mul(g, phi)
-        // });
-        //
-        // // old_eval is the last derived evaluation; it will be checked for consistency with its
-        // // committed "parent" value in the next iteration.
-        // let mut old_eval = with_context!(
-        //     self,
-        //     "combine initial oracles",
-        //     self.batch_fri_combine_initial(
-        //         instance,
-        //         &round_proof.initial_trees_proof,
-        //         challenges.fri_alpha,
-        //         subgroup_x,
-        //         precomputed_reduced_evals,
-        //         params,
-        //     )
-        // );
-        //
-        // for (i, &arity_bits) in params.reduction_arity_bits.iter().enumerate() {
-        //     let evals = &round_proof.steps[i].evals;
-        //
-        //     // Split x_index into the index of the coset x is in, and the index of x within that coset.
-        //     let coset_index_bits = x_index_bits[arity_bits..].to_vec();
-        //     let x_index_within_coset_bits = &x_index_bits[..arity_bits];
-        //     let x_index_within_coset = self.le_sum(x_index_within_coset_bits.iter());
-        //
-        //     // Check consistency with our old evaluation from the previous round.
-        //     let new_eval = self.random_access_extension(x_index_within_coset, evals.clone());
-        //     self.connect_extension(new_eval, old_eval);
-        //
-        //     // Infer P(y) from {P(x)}_{x^arity=y}.
-        //     old_eval = with_context!(
-        //         self,
-        //         "infer evaluation using interpolation",
-        //         self.compute_evaluation(
-        //             subgroup_x,
-        //             x_index_within_coset_bits,
-        //             arity_bits,
-        //             evals,
-        //             challenges.fri_betas[i],
-        //         )
-        //     );
-        //
-        //     with_context!(
-        //         self,
-        //         "verify FRI round Merkle proof.",
-        //         self.verify_merkle_proof_to_cap_with_cap_index::<C::Hasher>(
-        //             flatten_target(evals),
-        //             &coset_index_bits,
-        //             cap_index,
-        //             &proof.commit_phase_merkle_caps[i],
-        //             &round_proof.steps[i].merkle_proof,
-        //         )
-        //     );
-        //
-        //     // Update the point x to x^arity.
-        //     subgroup_x = self.exp_power_of_2(subgroup_x, arity_bits);
-        //
-        //     x_index_bits = coset_index_bits;
-        // }
-        //
-        // // Final check of FRI. After all the reductions, we check that the final polynomial is equal
-        // // to the one sent by the prover.
-        // let eval = with_context!(
-        //     self,
-        //     &format!(
-        //         "evaluate final polynomial of length {}",
-        //         proof.final_poly.len()
-        //     ),
-        //     proof.final_poly.eval_scalar(self, subgroup_x)
-        // );
-        // self.connect_extension(eval, old_eval);
+        // `subgroup_x` is `subgroup[x_index]`, i.e., the actual field element in the domain.
+        let mut subgroup_x = with_context!(self, "compute x from its index", {
+            let g = self.constant(F::coset_shift());
+            let phi = F::primitive_root_of_unity(n);
+            let phi = self.exp_from_bits_const_base(phi, x_index_bits.iter().rev());
+            // subgroup_x = g * phi
+            self.mul(g, phi)
+        });
+
+        // self.assert_u64(subgroup_x, 99349);
+        let mut batch_index = 0;
+
+        // old_eval is the last derived evaluation; it will be checked for consistency with its
+        // committed "parent" value in the next iteration.
+        let mut old_eval = with_context!(
+            self,
+            "combine initial oracles",
+            self.batch_fri_combine_initial(
+                instance,
+                batch_index,
+                &round_proof.initial_trees_proof,
+                challenges.fri_alpha,
+                subgroup_x,
+                &precomputed_reduced_evals[batch_index],
+                params,
+            )
+        );
+        batch_index += 1;
+
+        // self.assert_u64(old_eval.0[0], 99349);
+
+        for (i, &arity_bits) in params.reduction_arity_bits.iter().enumerate() {
+            let evals = &round_proof.steps[i].evals;
+
+            // Split x_index into the index of the coset x is in, and the index of x within that coset.
+            let coset_index_bits = x_index_bits[arity_bits..].to_vec();
+            let x_index_within_coset_bits = &x_index_bits[..arity_bits];
+            let x_index_within_coset = self.le_sum(x_index_within_coset_bits.iter());
+
+            // Check consistency with our old evaluation from the previous round.
+            let new_eval = self.random_access_extension(x_index_within_coset, evals.clone());
+            self.connect_extension(new_eval, old_eval);
+
+            // Infer P(y) from {P(x)}_{x^arity=y}.
+            old_eval = with_context!(
+                self,
+                "infer evaluation using interpolation",
+                self.compute_evaluation(
+                    subgroup_x,
+                    x_index_within_coset_bits,
+                    arity_bits,
+                    evals,
+                    challenges.fri_betas[i],
+                )
+            );
+
+            with_context!(
+                self,
+                "verify FRI round Merkle proof.",
+                self.verify_merkle_proof_to_cap_with_cap_index::<C::Hasher>(
+                    flatten_target(evals),
+                    &coset_index_bits,
+                    cap_index,
+                    &proof.commit_phase_merkle_caps[i],
+                    &round_proof.steps[i].merkle_proof,
+                )
+            );
+
+            // Update the point x to x^arity.
+            subgroup_x = self.exp_power_of_2(subgroup_x, arity_bits);
+
+            x_index_bits = coset_index_bits;
+            n -= arity_bits;
+
+            if batch_index < degree_bits.len()
+                && n == degree_bits[batch_index] + params.config.rate_bits
+            {
+                let subgroup_x_init = with_context!(self, "compute init x from its index", {
+                    let g = self.constant(F::coset_shift());
+                    let phi = F::primitive_root_of_unity(n);
+                    let phi = self.exp_from_bits_const_base(phi, x_index_bits.iter().rev());
+                    // subgroup_x = g * phi
+                    self.mul(g, phi)
+                });
+                let eval = self.batch_fri_combine_initial(
+                    instance,
+                    batch_index,
+                    &round_proof.initial_trees_proof,
+                    challenges.fri_alpha,
+                    subgroup_x_init,
+                    &precomputed_reduced_evals[batch_index],
+                    params,
+                );
+                old_eval = self.mul_extension(old_eval, challenges.fri_betas[i]);
+                old_eval = self.add_extension(old_eval, eval);
+                batch_index += 1;
+            }
+        }
+
+        // Final check of FRI. After all the reductions, we check that the final polynomial is equal
+        // to the one sent by the prover.
+        let eval = with_context!(
+            self,
+            &format!(
+                "evaluate final polynomial of length {}",
+                proof.final_poly.len()
+            ),
+            proof.final_poly.eval_scalar(self, subgroup_x)
+        );
+        self.connect_extension(eval, old_eval);
     }
 }
