@@ -304,10 +304,10 @@ mod test {
         let n0 = 1 << k0;
         let n1 = 1 << k1;
         let n2 = 1 << k2;
-        let trace0 = PolynomialValues::new(F::rand_vec(n0));
-        let trace1_0 = PolynomialValues::new(F::rand_vec(n1));
-        let trace1_1 = PolynomialValues::new(F::rand_vec(n1));
-        let trace2 = PolynomialValues::new(F::rand_vec(n2));
+        let trace0 = PolynomialValues::new((0..n0).map(F::from_canonical_u64).collect());
+        let trace1_0 = PolynomialValues::new((0..n1).map(F::from_canonical_u64).collect());
+        let trace1_1 = PolynomialValues::new((0..n1).map(F::from_canonical_u64).collect());
+        let trace2 = PolynomialValues::new((0..n2).map(F::from_canonical_u64).collect());
 
         let trace_oracle: BatchFriOracle<GoldilocksField, C, D> = BatchFriOracle::from_values(
             vec![
@@ -331,6 +331,8 @@ mod test {
         let poly1_0 = &trace_oracle.polynomials[1];
         let poly1_1 = &trace_oracle.polynomials[2];
         let poly2 = &trace_oracle.polynomials[3];
+
+        let mut challenger = Challenger::<F, H>::new();
         let mut verifier_challenger = challenger.clone();
 
         let fri_instance_0 = FriInstanceInfo {
