@@ -261,8 +261,8 @@ mod test {
     use crate::fri::batch_verifier::verify_batch_fri_proof;
     use crate::fri::reduction_strategies::FriReductionStrategy;
     use crate::fri::structure::{
-        FriBatchInfo, FriInstanceInfo, FriInstanceInfoTarget, FriOpeningBatch, FriOpenings,
-        FriOpeningsTarget, FriOracleInfo, FriPolynomialInfo,
+        FriBatchInfo, FriBatchInfoTarget, FriInstanceInfo, FriInstanceInfoTarget, FriOpeningBatch,
+        FriOpenings, FriOpeningsTarget, FriOracleInfo, FriPolynomialInfo,
     };
     use crate::fri::witness_util::set_fri_proof_target;
     use crate::fri::FriConfig;
@@ -397,32 +397,35 @@ mod test {
             }],
         };
         let fri_instances = vec![fri_instance_0, fri_instance_1, fri_instance_2];
+        let poly0_zeta = poly0.to_extension::<D>().eval(zeta);
+        let poly0_eta = poly0.to_extension::<D>().eval(eta);
         let fri_opening_batch_0 = FriOpenings {
             batches: vec![
                 FriOpeningBatch {
-                    values: vec![poly0.to_extension::<D>().eval(zeta)],
+                    values: vec![poly0_zeta],
                 },
                 FriOpeningBatch {
-                    values: vec![poly0.to_extension::<D>().eval(eta)],
+                    values: vec![poly0_eta],
                 },
             ],
         };
+        let poly10_zeta = poly1_0.to_extension::<D>().eval(zeta);
+        let poly11_zeta = poly1_1.to_extension::<D>().eval(zeta);
+        let poly11_eta = poly1_1.to_extension::<D>().eval(eta);
         let fri_opening_batch_1 = FriOpenings {
             batches: vec![
                 FriOpeningBatch {
-                    values: vec![
-                        poly1_0.to_extension::<D>().eval(zeta),
-                        poly1_1.to_extension::<D>().eval(zeta),
-                    ],
+                    values: vec![poly10_zeta, poly11_zeta],
                 },
                 FriOpeningBatch {
-                    values: vec![poly1_1.to_extension::<D>().eval(eta)],
+                    values: vec![poly11_eta],
                 },
             ],
         };
+        let poly2_zeta = poly2.to_extension::<D>().eval(zeta);
         let fri_opening_batch_2 = FriOpenings {
             batches: vec![FriOpeningBatch {
-                values: vec![poly2.to_extension::<D>().eval(zeta)],
+                values: vec![poly2_zeta],
             }],
         };
         let fri_openings = vec![
@@ -447,12 +450,14 @@ mod test {
             k0,
             &fri_params.config,
         );
+        let degree_bits = [k0, k1, k2];
+        let merkle_cap = trace_oracle.field_merkle_tree.cap;
         verify_batch_fri_proof::<GoldilocksField, C, D>(
-            &[k0, k1, k2],
+            &degree_bits,
             &fri_instances,
             &fri_openings,
             &fri_challenges,
-            &[trace_oracle.field_merkle_tree.cap],
+            &[merkle_cap.clone()],
             &proof,
             &fri_params,
         )?;
@@ -462,10 +467,71 @@ mod test {
         let mut builder = CircuitBuilder::<F, D>::new(config.clone());
         let num_leaves_per_oracle = vec![4];
         let fri_proof_target = builder.add_virtual_fri_proof(&num_leaves_per_oracle, &fri_params);
-        let fri_instance_info_target = [FriInstanceInfoTarget {
-            oracles: vec![],
-            batches: vec![],
-        }];
+        let zeta_target = builder.constant_extension(zeta);
+        let eta_target = builder.constant_extension(eta);
+        let fri_instance_info_target_0 = FriInstanceInfoTarget {
+            oracles: vec![FriOracleInfo {
+                num_polys: 1,
+                blinding: false,
+            }],
+            batches: vec![
+                FriBatchInfoTarget {
+                    point: zeta_target,
+                    polynomials: vec![FriPolynomialInfo {
+                        oracle_index: 0,
+                        polynomial_index: 0,
+                    }],
+                },
+                FriBatchInfoTarget {
+                    point: eta_target,
+                    polynomials: vec![FriPolynomialInfo {
+                        oracle_index: 0,
+                        polynomial_index: 0,
+                    }],
+                },
+            ],
+        };
+        let fri_instance_info_target_1 = FriInstanceInfoTarget {
+            oracles: vec![FriOracleInfo {
+                num_polys: 2,
+                blinding: false,
+            }],
+            batches: vec![
+                FriBatchInfoTarget {
+                    point: zeta_target,
+                    polynomials: vec![
+                        FriPolynomialInfo {
+                            oracle_index: 0,
+                            polynomial_index: 1,
+                        },
+                        FriPolynomialInfo {
+                            oracle_index: 0,
+                            polynomial_index: 2,
+                        },
+                    ],
+                },
+                FriBatchInfoTarget {
+                    point: eta_target,
+                    polynomials: vec![FriPolynomialInfo {
+                        oracle_index: 0,
+                        polynomial_index: 2,
+                    }],
+                },
+            ],
+        };
+        let fri_instance_info_target_2 = FriInstanceInfoTarget {
+            oracles: vec![FriOracleInfo {
+                num_polys: 1,
+                blinding: false,
+            }],
+            batches: vec![FriBatchInfoTarget {
+                point: zeta_target,
+                polynomials: vec![FriPolynomialInfo {
+                    oracle_index: 0,
+                    polynomial_index: 3,
+                }],
+            }],
+        };
         let fri_openings_target = [FriOpeningsTarget { batches: vec![] }];
         let mut challenger = RecursiveChallenger::<F, H, D>::new(&mut builder);
         let fri_challenges_target = challenger.fri_challenges(
@@ -475,8 +541,14 @@ mod test {
             fri_proof_target.pow_witness,
             &fri_params.config,
         );
-        let merkle_cap_target = MerkleCapTarget { 0: vec![] };
+        let merkle_cap_target = builder.constant_merkle_cap(&merkle_cap);
+        let fri_instance_info_target = vec![
+            fri_instance_info_target_0,
+            fri_instance_info_target_1,
+            fri_instance_info_target_2,
+        ];
         builder.verify_batch_fri_proof::<C>(
+            &degree_bits,
             &fri_instance_info_target,
             &fri_openings_target,
             &fri_challenges_target,

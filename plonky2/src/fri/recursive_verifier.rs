@@ -376,7 +376,7 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
     /// Thus ambiguous elements contribute a negligible amount to soundness error.
     ///
     /// Here we compare the probabilities as a sanity check, to verify the claim above.
-    fn assert_noncanonical_indices_ok(config: &FriConfig) {
+    pub(crate) fn assert_noncanonical_indices_ok(config: &FriConfig) {
         let num_ambiguous_elems = u64::MAX - F::ORDER + 1;
         let query_error = config.rate();
         let p_ambiguous = (num_ambiguous_elems as f64) / (F::ORDER as f64);
@@ -463,12 +463,12 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
 /// For each opening point, holds the reduced (by `alpha`) evaluations of each polynomial that's
 /// opened at that point.
 #[derive(Clone)]
-struct PrecomputedReducedOpeningsTarget<const D: usize> {
-    reduced_openings_at_point: Vec<ExtensionTarget<D>>,
+pub(crate) struct PrecomputedReducedOpeningsTarget<const D: usize> {
+    pub(crate) reduced_openings_at_point: Vec<ExtensionTarget<D>>,
 }
 
 impl<const D: usize> PrecomputedReducedOpeningsTarget<D> {
-    fn from_os_and_alpha<F: RichField + Extendable<D>>(
+    pub(crate) fn from_os_and_alpha<F: RichField + Extendable<D>>(
         openings: &FriOpeningsTarget<D>,
         alpha: ExtensionTarget<D>,
         builder: &mut CircuitBuilder<F, D>,
