@@ -212,15 +212,6 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         for (&bit, &sibling) in leaf_index_bits.iter().zip(&proof.siblings) {
             debug_assert_eq!(sibling.elements.len(), NUM_HASH_OUT_ELTS);
 
-            if leaf_data_index < leaf_heights.len()
-                && current_height == leaf_heights[leaf_data_index]
-            {
-                let mut new_leaves = state.elements.to_vec();
-                new_leaves.extend_from_slice(&leaf_data[leaf_data_index]);
-                state = self.hash_or_noop::<H>(new_leaves);
-                leaf_data_index += 1;
-            }
-
             let mut perm_inputs = H::AlgebraicPermutation::default();
             perm_inputs.set_from_slice(&state.elements, 0);
             perm_inputs.set_from_slice(&sibling.elements, NUM_HASH_OUT_ELTS);
@@ -233,6 +224,17 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
             state = HashOutTarget {
                 elements: hash_outs,
             };
+            current_height -= 1;
+
+            if leaf_data_index < leaf_heights.len()
+                && current_height == leaf_heights[leaf_data_index]
+            {
+                let mut new_leaves = state.elements.to_vec();
+                new_leaves.extend_from_slice(&leaf_data[leaf_data_index]);
+                state = self.hash_or_noop::<H>(new_leaves.clone());
+
+                leaf_data_index += 1;
+            }
         }
 
         for i in 0..NUM_HASH_OUT_ELTS {
