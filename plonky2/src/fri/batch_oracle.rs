@@ -262,7 +262,7 @@ mod test {
     use crate::fri::reduction_strategies::FriReductionStrategy;
     use crate::fri::structure::{
         FriBatchInfo, FriBatchInfoTarget, FriInstanceInfo, FriInstanceInfoTarget, FriOpeningBatch,
-        FriOpenings, FriOpeningsTarget, FriOracleInfo, FriPolynomialInfo,
+        FriOpeningBatchTarget, FriOpenings, FriOpeningsTarget, FriOracleInfo, FriPolynomialInfo,
     };
     use crate::fri::witness_util::set_fri_proof_target;
     use crate::fri::FriConfig;
@@ -464,7 +464,7 @@ mod test {
             &fri_params,
         )?;
 
-        // test recursive verifier
+        // Test recursive verifier
         let config = CircuitConfig::standard_recursion_config();
         let mut builder = CircuitBuilder::<F, D>::new(config.clone());
         let num_leaves_per_oracle = vec![4];
@@ -534,7 +534,44 @@ mod test {
                 }],
             }],
         };
-        let fri_openings_target = [FriOpeningsTarget { batches: vec![] }];
+
+        let poly0_zeta_target = builder.constant_extension(poly0_zeta);
+        let poly0_eta_target = builder.constant_extension(poly0_eta);
+        let fri_opening_batch_0 = FriOpeningsTarget {
+            batches: vec![
+                FriOpeningBatchTarget {
+                    values: vec![poly0_zeta_target],
+                },
+                FriOpeningBatchTarget {
+                    values: vec![poly0_eta_target],
+                },
+            ],
+        };
+        let poly10_zeta_target = builder.constant_extension(zeta);
+        let poly11_zeta_target = builder.constant_extension(zeta);
+        let poly11_eta_target = builder.constant_extension(eta);
+        let fri_opening_batch_1 = FriOpeningsTarget {
+            batches: vec![
+                FriOpeningBatchTarget {
+                    values: vec![poly10_zeta_target, poly11_zeta_target],
+                },
+                FriOpeningBatchTarget {
+                    values: vec![poly11_eta_target],
+                },
+            ],
+        };
+        let poly2_zeta_target = builder.constant_extension(zeta);
+        let fri_opening_batch_2 = FriOpeningsTarget {
+            batches: vec![FriOpeningBatchTarget {
+                values: vec![poly2_zeta_target],
+            }],
+        };
+        let fri_openings_target = [
+            fri_opening_batch_0,
+            fri_opening_batch_1,
+            fri_opening_batch_2,
+        ];
+
         let mut challenger = RecursiveChallenger::<F, H, D>::new(&mut builder);
         let fri_challenges_target = challenger.fri_challenges(
             &mut builder,
@@ -543,12 +580,15 @@ mod test {
             fri_proof_target.pow_witness,
             &fri_params.config,
         );
+
         let merkle_cap_target = builder.constant_merkle_cap(&merkle_cap);
+
         let fri_instance_info_target = vec![
             fri_instance_info_target_0,
             fri_instance_info_target_1,
             fri_instance_info_target_2,
         ];
+
         builder.verify_batch_fri_proof::<C>(
             &degree_bits,
             &fri_instance_info_target,
