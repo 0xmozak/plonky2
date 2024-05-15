@@ -254,6 +254,7 @@ mod test {
     use alloc::vec;
 
     use plonky2_field::goldilocks_field::GoldilocksField;
+    use plonky2_field::types::Sample;
 
     use super::*;
     use crate::fri::batch_oracle::BatchFriOracle;
@@ -302,10 +303,10 @@ mod test {
         let n0 = 1 << k0;
         let n1 = 1 << k1;
         let n2 = 1 << k2;
-        let trace0 = PolynomialValues::new((0..n0).map(F::from_canonical_u64).collect());
-        let trace1_0 = PolynomialValues::new((0..n1).map(F::from_canonical_u64).collect());
-        let trace1_1 = PolynomialValues::new((0..n1).map(F::from_canonical_u64).collect());
-        let trace2 = PolynomialValues::new((0..n2).map(F::from_canonical_u64).collect());
+        let trace0 = PolynomialValues::new(F::rand_vec(n0));
+        let trace1_0 = PolynomialValues::new(F::rand_vec(n1));
+        let trace1_1 = PolynomialValues::new(F::rand_vec(n1));
+        let trace2 = PolynomialValues::new(F::rand_vec(n2));
 
         let trace_oracle: BatchFriOracle<GoldilocksField, C, D> = BatchFriOracle::from_values(
             vec![
