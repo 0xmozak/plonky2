@@ -99,9 +99,6 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
                     params,
                 )
             );
-
-            // TODO: remove
-            return;
         }
     }
 
@@ -206,7 +203,7 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
     ) where
         C::Hasher: AlgebraicHasher<F>,
     {
-        let mut n = degree_bits[0] + params.config.rate_bits;
+        let mut n = degree_bits[0];
 
         // Note that this `low_bits` decomposition permits non-canonical binary encodings. Here we
         // verify that this has a negligible impact on soundness error.
@@ -233,11 +230,9 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
             let g = self.constant(F::coset_shift());
             let phi = F::primitive_root_of_unity(n);
             let phi = self.exp_from_bits_const_base(phi, x_index_bits.iter().rev());
-            // subgroup_x = g * phi
             self.mul(g, phi)
         });
 
-        // self.assert_u64(subgroup_x, 99349);
         let mut batch_index = 0;
 
         // old_eval is the last derived evaluation; it will be checked for consistency with its
@@ -256,8 +251,6 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
             )
         );
         batch_index += 1;
-
-        // self.assert_u64(old_eval.0[0], 99349);
 
         for (i, &arity_bits) in params.reduction_arity_bits.iter().enumerate() {
             let evals = &round_proof.steps[i].evals;
@@ -302,14 +295,11 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
             x_index_bits = coset_index_bits;
             n -= arity_bits;
 
-            if batch_index < degree_bits.len()
-                && n == degree_bits[batch_index] + params.config.rate_bits
-            {
+            if batch_index < degree_bits.len() && n == degree_bits[batch_index] {
                 let subgroup_x_init = with_context!(self, "compute init x from its index", {
                     let g = self.constant(F::coset_shift());
                     let phi = F::primitive_root_of_unity(n);
                     let phi = self.exp_from_bits_const_base(phi, x_index_bits.iter().rev());
-                    // subgroup_x = g * phi
                     self.mul(g, phi)
                 });
                 let eval = self.batch_fri_combine_initial(

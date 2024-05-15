@@ -545,9 +545,9 @@ mod test {
                 },
             ],
         };
-        let poly10_zeta_target = builder.constant_extension(zeta);
-        let poly11_zeta_target = builder.constant_extension(zeta);
-        let poly11_eta_target = builder.constant_extension(eta);
+        let poly10_zeta_target = builder.constant_extension(poly10_zeta);
+        let poly11_zeta_target = builder.constant_extension(poly11_zeta);
+        let poly11_eta_target = builder.constant_extension(poly11_eta);
         let fri_opening_batch_1 = FriOpeningsTarget {
             batches: vec![
                 FriOpeningBatchTarget {
@@ -558,7 +558,7 @@ mod test {
                 },
             ],
         };
-        let poly2_zeta_target = builder.constant_extension(zeta);
+        let poly2_zeta_target = builder.constant_extension(poly2_zeta);
         let fri_opening_batch_2 = FriOpeningsTarget {
             batches: vec![FriOpeningBatchTarget {
                 values: vec![poly2_zeta_target],

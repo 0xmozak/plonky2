@@ -301,7 +301,7 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
                 product,
                 bit.target,
                 product,
-            );
+            )
         }
         product
     }

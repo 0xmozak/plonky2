@@ -542,11 +542,6 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         self.connect(x, zero);
     }
 
-    pub fn assert_u64(&mut self, x: Target, v: u64) {
-        let tar = self.constant(F::from_canonical_u64(v));
-        self.connect(x, tar);
-    }
-
     /// Enforces that a routable `Target` value is 1, using Plonk's permutation argument.
     ///
     /// # Example
