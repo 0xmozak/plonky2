@@ -82,13 +82,13 @@ pub struct FriOpeningBatch<F: RichField + Extendable<D>, const D: usize> {
 }
 
 /// Opened values of each polynomial.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FriOpeningsTarget<const D: usize> {
     pub batches: Vec<FriOpeningBatchTarget<D>>,
 }
 
 /// Opened values of each polynomial that's opened at a particular point.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FriOpeningBatchTarget<const D: usize> {
     pub values: Vec<ExtensionTarget<D>>,
 }
