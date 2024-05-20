@@ -169,7 +169,7 @@ fn batch_fri_verifier_query_round<
         &round_proof.initial_trees_proof,
         initial_merkle_caps,
     )?;
-    let mut n = degree_bits[0] + params.config.rate_bits;
+    let mut n = degree_bits[0];
     // `subgroup_x` is `subgroup[x_index]`, i.e., the actual field element in the domain.
     let mut subgroup_x = F::MULTIPLICATIVE_GROUP_GENERATOR
         * F::primitive_root_of_unity(n).exp_u64(reverse_bits(x_index, n) as u64);
@@ -218,9 +218,7 @@ fn batch_fri_verifier_query_round<
         x_index = coset_index;
         n -= arity_bits;
 
-        if batch_index < degree_bits.len()
-            && n == degree_bits[batch_index] + params.config.rate_bits
-        {
+        if batch_index < degree_bits.len() && n == degree_bits[batch_index] {
             let subgroup_x_init = F::MULTIPLICATIVE_GROUP_GENERATOR
                 * F::primitive_root_of_unity(n).exp_u64(reverse_bits(x_index, n) as u64);
             let eval = batch_fri_combine_initial::<F, C, D>(
