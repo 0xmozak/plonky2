@@ -1100,7 +1100,8 @@ pub mod debug_utils {
         table: &TableWithColumns<F>,
         multiset: &mut MultiSet<F>,
     ) {
-        let trace = &trace_poly_values[table.table];
+        // Fixes an issue with rust-analyzer regression
+        let trace: &[PolynomialValues<F>] = &trace_poly_values[table.table];
         for i in 0..trace[0].len() {
             let filter = table.filter.eval_table(trace, i);
             if filter.is_one() {
