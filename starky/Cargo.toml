@@ -2,7 +2,10 @@
 name = "starky"
 description = "Implementation of STARKs"
 version = "0.4.0"
-authors = ["Daniel Lubarov <daniel@lubarov.com>", "William Borgeaud <williamborgeaud@gmail.com>"]
+authors = [
+    "Daniel Lubarov <daniel@lubarov.com>",
+    "William Borgeaud <williamborgeaud@gmail.com>",
+]
 readme = "README.md"
 edition.workspace = true
 license.workspace = true
@@ -24,6 +27,7 @@ hashbrown = { workspace = true }
 itertools = { workspace = true }
 log = { workspace = true }
 num-bigint = { version = "0.4.4", default-features = false }
+bumpalo = { version = "3.16.0" }
 
 # Local dependencies
 plonky2 = { path = "../plonky2", default-features = false }

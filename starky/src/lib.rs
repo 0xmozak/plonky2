@@ -328,6 +328,7 @@ pub mod config;
 pub mod constraint_consumer;
 pub mod cross_table_lookup;
 pub mod evaluation_frame;
+pub mod expr;
 pub mod lookup;
 pub mod proof;
 pub mod prover;
