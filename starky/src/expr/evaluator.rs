@@ -93,7 +93,7 @@ where
 pub struct Caching<'a, V, E> {
     constant_cache: HashMap<i64, V>,
     value_cache: HashMap<*const ExprTree<'a, V>, V>,
-    /// TODO: Add docs
+    /// Inner evaluator
     pub evaluator: E,
 }
 
@@ -102,11 +102,11 @@ where
     E: Evaluator<'a, V>,
     V: Copy,
 {
-    fn from(value: E) -> Self {
+    fn from(evaluator: E) -> Self {
         Caching {
             constant_cache: HashMap::default(),
             value_cache: HashMap::default(),
-            evaluator: value,
+            evaluator,
         }
     }
 }
@@ -150,7 +150,7 @@ where
     }
 }
 
-/// TODO: Add docs
+/// Example evaluator that counts operations
 #[derive(Debug, Default)]
 pub struct Counting<E> {
     count: u64,
