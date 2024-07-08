@@ -60,8 +60,8 @@
 
 pub mod evaluator;
 pub use evaluator::*;
-pub mod expr;
 pub mod ops;
+pub mod starky;
 
 use core::fmt::Debug;
 
