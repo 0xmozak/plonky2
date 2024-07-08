@@ -483,19 +483,19 @@ where
 
 /// TODO: Add docs
 #[derive(Debug, Default)]
-pub struct Cached<'a, V, E> {
+pub struct Caching<'a, V, E> {
     constant_cache: HashMap<i64, V>,
     value_cache: HashMap<*const ExprTree<'a, V>, V>,
     evaluator: E,
 }
 
-impl<'a, V, E> From<E> for Cached<'a, V, E>
+impl<'a, V, E> From<E> for Caching<'a, V, E>
 where
     E: Evaluator<'a, V>,
     V: Copy,
 {
     fn from(value: E) -> Self {
-        Cached {
+        Caching {
             constant_cache: HashMap::default(),
             value_cache: HashMap::default(),
             evaluator: value,
@@ -503,7 +503,7 @@ where
     }
 }
 
-impl<'a, V, E> Evaluator<'a, V> for Cached<'a, V, E>
+impl<'a, V, E> Evaluator<'a, V> for Caching<'a, V, E>
 where
     V: Copy,
     E: Evaluator<'a, V>,
@@ -657,7 +657,7 @@ mod tests {
         let b = Expr::from(5);
         let c = Expr::from(3);
 
-        let mut p = Cached::from(PureEvaluator::default());
+        let mut p = Caching::from(PureEvaluator::default());
 
         assert_eq!(p.eval(a + b * c), 22);
         assert_eq!(p.eval(a - b * c), -8);
@@ -683,7 +683,7 @@ mod tests {
         assert_eq!(c.count(), 1023);
         c.reset();
 
-        let mut c = Cached::from(c);
+        let mut c = Caching::from(c);
         assert_eq!(c.eval(one), 1);
         assert_eq!(c.evaluator.count(), 10);
     }
@@ -697,7 +697,7 @@ mod tests {
             one = one * one;
         }
 
-        let mut p = Cached::<i64, Counting<PureEvaluator<_>>>::default();
+        let mut p = Caching::<i64, Counting<PureEvaluator<_>>>::default();
         assert_eq!(p.eval(one), 1);
         assert_eq!(p.evaluator.count(), 64);
     }

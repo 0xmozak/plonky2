@@ -12,7 +12,7 @@ use plonky2::iop::ext_target::ExtensionTarget;
 use plonky2::plonk::circuit_builder::CircuitBuilder;
 
 pub use super::PureEvaluator;
-use super::{BinOp, Cached, Evaluator, Expr, ExprBuilder, StarkFrameTyped, UnaOp};
+use super::{BinOp, Caching, Evaluator, Expr, ExprBuilder, StarkFrameTyped, UnaOp};
 use crate::constraint_consumer::{ConstraintConsumer, RecursiveConstraintConsumer};
 use crate::evaluation_frame::StarkFrame;
 use crate::stark::Stark;
@@ -174,7 +174,7 @@ pub fn build_ext<F, const D: usize>(
     F: Extendable<D>,
 {
     for constraint in cb.constraints {
-        let mut evaluator = Cached::from(CircuitBuilderEvaluator {
+        let mut evaluator = Caching::from(CircuitBuilderEvaluator {
             builder: circuit_builder,
         });
         let constraint = constraint.map(|constraint| evaluator.eval(constraint));
@@ -198,7 +198,7 @@ where
     FE: FieldExtension<D2, BaseField = F>,
     P: PackedField<Scalar = FE>,
 {
-    let mut evaluator = Cached::from(packed_field_evaluator());
+    let mut evaluator = Caching::from(packed_field_evaluator());
     cb.constraints
         .into_iter()
         .map(|c| c.map(|constraint| evaluator.eval(constraint)))
@@ -215,7 +215,7 @@ pub fn build_packed<F, FE, P, const D: usize, const D2: usize>(
     FE: FieldExtension<D2, BaseField = F>,
     P: PackedField<Scalar = FE>,
 {
-    let mut evaluator = Cached::from(packed_field_evaluator());
+    let mut evaluator = Caching::from(packed_field_evaluator());
     let evaluated = cb
         .constraints
         .into_iter()
