@@ -63,6 +63,7 @@ pub use evaluator::*;
 pub mod expr;
 pub use expr::*;
 pub mod ops;
+pub mod stark_frame_typed;
 pub mod starky;
 
 #[cfg(test)]
