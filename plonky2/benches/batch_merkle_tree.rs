@@ -14,8 +14,8 @@ const ELEMS_PER_LEAF_2: usize = 5;
 const ELEMS_PER_LEAF_3: usize = 100;
 
 pub(crate) fn bench_batch_merkle_tree<F: RichField, H: Hasher<F>>(c: &mut Criterion) {
-    let mut group = c.benchmark_group(&format!(
-        "field-merkle-tree<{}, {}>",
+    let mut group = c.benchmark_group(format!(
+        "batch-merkle-tree<{}, {}>",
         type_name::<F>(),
         type_name::<H>()
     ));
